@@ -1,35 +1,51 @@
-# Thihaショップ（Vercel + Google Sheets / 社内向けシンプル版）
+# Thihaショップ（Vercel + Supabase / 社内向けシンプル版）
 
-## Database (Google Sheets)
+## Database (Supabase)
 
-各シートの 1 行目はヘッダ。列名は**厳密一致**。
+Supabase のテーブル構造は以下の通りです。
 
 - **Products** — `product_id, name, price`
 - **Users** — `phone, balance, last_charge_date`
-- **Transactions** — `timestamp, phone, product_id, quantity, total_amount`
+- **Transactions** — `timestamp, phone_number, product_id, quantity, total_amount`
 - **ChargeRequests** — `id, phone, amount, approved, requested_at, approved_at`
-  - `approved`: `"true"` / `"false"`
+  - `approved`: `true` / `false`
 - **AdminSubscriptions** — `adminId, subscription`（Push 購読 JSON 文字列）
 
-> 例: `Products` に `p1, Water, 100` を 1 行入れておくと確認が楽です。
+## Google Sheets から Supabase への移行手順
+
+1. Google Sheets で使用中の各シートを CSV 形式でエクスポートする。
+2. Supabase プロジェクトを作成し、上記スキーマでテーブルを作成する。
+3. Supabase の Table Editor から CSV をインポートし、データを移行する。
+4. プロジェクトの URL とサービスロールキーを取得し、`.env` に設定する。
+
+```
+SUPABASE_URL=<プロジェクトURL>
+SUPABASE_SERVICE_ROLE_KEY=<サービスロールキー>
+# 任意: キャッシュのTTL (ミリ秒)
+BALANCE_CACHE_TTL_MS=2000
+```
 
 ## 事前準備
 
-1. **サービスアカウント**を作成（JSON キー発行）
-2. **Google Sheets API** を有効化
-3. 対象シートをサービスアカウントの **client_email** に**編集者**で共有（リンク共有は OFF）
+1. 上記 `.env` を作成
+2. 依存関係をインストール
 
-## 依存 / 環境変数
+```bash
+npm install
+```
 
-## ローカル起動手順（Local Development Quickstart）
+## ローカル起動手順
 
-> 前提: Node.js 18+ / npm（または pnpm）、Google Sheets 側はこのREADME冒頭のスキーマ通りに作成済み
-
-### 1) リポジトリ取得 & 依存インストール
 ```bash
 git clone <このリポジトリURL>
 cd <リポジトリ名>
-npm i
-# まだ入れていなければ
-npm i googleapis zod web-push
+npm install
 npm run dev
+```
+
+## Web Push について
+
+現在 Web Push はダミー実装になっており、設定しなくてもアプリは動作します。
+将来的に Push 通知を有効化する場合は、`/lib/push.ts` の `isPushReady()` を実装し、
+VAPID キーなどの必要な設定を行ってください。
+

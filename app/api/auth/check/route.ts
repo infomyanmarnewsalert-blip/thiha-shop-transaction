@@ -1,5 +1,5 @@
 // /app/api/auth/check/route.ts
-import { getBalanceFast } from "@/lib/sheets";
+import { getBalanceFast } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 

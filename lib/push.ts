@@ -29,7 +29,7 @@ type WebPushLike = { sendNotification: (..._args: any[]) => Promise<void> };
 const noopWebPush: WebPushLike = { sendNotification: async () => {} };
 
 /** 互換用エクスポート（既存の import { webpush } from '@/lib/push' を壊さない） */
-export const webpush = noopWebPush as unknown as typeof import("web-push");
+export const webpush: WebPushLike = noopWebPush;
 
 /** 互換用エクスポート（既存の getWebPush() を壊さない） */
 export function getWebPush(): WebPushLike {

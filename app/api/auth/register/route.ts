@@ -1,10 +1,5 @@
 // /app/api/auth/register/route.ts
-import {
-  TAB,
-  findUserRowByPhoneNumber,
-  appendRow,
-  invalidateBalanceCache,
-} from "@/lib/sheets";
+import { findUserByPhone, supabase, invalidateBalanceCache } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +13,7 @@ export async function POST(req: Request) {
   }
   const p = String(phone).trim();
 
-  const exists = await findUserRowByPhoneNumber(p);
+  const exists = await findUserByPhone(p);
   if (exists) {
     return new Response(
       JSON.stringify({
@@ -31,7 +26,7 @@ export async function POST(req: Request) {
   }
 
   // 初期残高0, last_charge_date空
-  await appendRow(TAB.USERS, [p, 0, ""]);
+  await supabase.from("Users").insert({ phone: p, balance: 0, last_charge_date: "" });
   invalidateBalanceCache(p);
 
   return new Response(JSON.stringify({ created: true, balance: 0 }), {
