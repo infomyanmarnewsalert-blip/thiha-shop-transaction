@@ -6,6 +6,7 @@ interface Product {
   product_id: number
   name: string
   price: number
+  active: boolean
 }
 
 interface Balance {
@@ -83,20 +84,39 @@ export async function getProducts(): Promise<Product[]> {
     product_id: Number.parseInt(row[0]),
     name: row[1],
     price: Number.parseInt(row[2]),
+    active: row[3] !== "FALSE",
   }))
 }
 
-export async function addProduct(name: string, price: number): Promise<void> {
+export async function addProduct(
+  name: string,
+  price: number,
+  active = true,
+): Promise<void> {
   const products = await getProducts()
-  const newId = products.length > 0 ? Math.max(...products.map((p) => p.product_id)) + 1 : 1
-  await writeSheet("Products", [[newId, name, price]])
+  const newId =
+    products.length > 0
+      ? Math.max(...products.map((p) => p.product_id)) + 1
+      : 1
+  await writeSheet("Products", [[newId, name, price, active ? "TRUE" : "FALSE"]])
 }
 
-export async function updateProduct(productId: number, name: string, price: number): Promise<void> {
+export async function updateProduct(
+  productId: number,
+  name: string,
+  price: number,
+  active = true,
+): Promise<void> {
   const rows = await readSheet("Products")
-  const rowIndex = rows.findIndex((row, index) => index > 0 && Number.parseInt(row[0]) === productId)
+  const rowIndex = rows.findIndex(
+    (row, index) => index > 0 && Number.parseInt(row[0]) === productId,
+  )
   if (rowIndex !== -1) {
-    await updateSheet("Products", `A${rowIndex + 1}:C${rowIndex + 1}`, [[productId, name, price]])
+    await updateSheet(
+      "Products",
+      `A${rowIndex + 1}:D${rowIndex + 1}`,
+      [[productId, name, price, active ? "TRUE" : "FALSE"]],
+    )
   }
 }
 
