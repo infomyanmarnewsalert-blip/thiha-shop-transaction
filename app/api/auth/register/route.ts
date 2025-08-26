@@ -26,7 +26,9 @@ export async function POST(req: Request) {
   }
 
   // 初期残高0, last_charge_date空
-  await supabase.from("Users").insert({ phone: p, balance: 0, last_charge_date: "" });
+  await supabase
+    .from("Users")
+    .insert({ phone_number: p, balance: 0, last_charge_date: "" });
   invalidateBalanceCache(p);
 
   return new Response(JSON.stringify({ created: true, balance: 0 }), {

@@ -72,7 +72,7 @@ export default function AdminPage() {
   const products: any[] = (
     Array.isArray(productsRaw) ? productsRaw : productsRaw?.items ?? []
   ).map((p: any) => ({
-    id: p.product_id ?? p.id ?? p.uuid,
+    id: p.id ?? p.uuid,
     name: p.name,
     price: Number(p.price ?? 0),
   }));
@@ -82,7 +82,7 @@ export default function AdminPage() {
     Array.isArray(chargeRaw) ? chargeRaw : chargeRaw?.items ?? []
   ).map((r: any) => ({
     id: r.id ?? r.request_id ?? r.uuid,
-    phone: r.phone,
+    phone: r.phone ?? r.phone_number ?? r.Users?.phone_number,
     amount: Number(r.amount ?? 0),
     approved:
       typeof r.approved === "boolean"
@@ -129,11 +129,11 @@ export default function AdminPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          product_id: product.id,
-          name: product.name,
-          price: product.price,
-        }),
+          body: JSON.stringify({
+            id: product.id,
+            name: product.name,
+            price: product.price,
+          }),
       });
 
       const result = await response.json();

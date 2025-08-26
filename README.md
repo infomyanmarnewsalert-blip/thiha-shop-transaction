@@ -4,10 +4,10 @@
 
 Supabase のテーブル構造は以下の通りです。
 
-- **Products** — `product_id, name, price`
-- **Users** — `phone, balance, last_charge_date`
-- **Transactions** — `timestamp, phone_number, product_id, quantity, total_amount`
-- **ChargeRequests** — `id, phone, amount, approved, requested_at, approved_at`
+- **Products** — `id, name, price`
+- **Users** — `id, phone_number, balance, last_charge_date`
+- **Transactions** — `id, created_at, user_id, product_id, quantity, total_amount`
+- **ChargeRequests** — `id, user_id, amount, approved, requested_at, approved_at`
   - `approved`: `true` / `false`
 - **AdminSubscriptions** — `adminId, subscription`（Push 購読 JSON 文字列）
 

@@ -18,7 +18,7 @@ export async function findUserByPhone(phone: string) {
   const { data, error } = await supabase
     .from('Users')
     .select('*')
-    .eq('phone', phone)
+    .eq('phone_number', phone)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data;

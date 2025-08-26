@@ -58,7 +58,7 @@ export default function PurchasePage() {
       ? productsRaw
       : productsRaw?.items ?? [];
     return list.map((p: any) => ({
-      id: Number(p.product_id ?? p.id),
+      id: Number(p.id),
       name: p.name,
       price: Number(p.price ?? 0),
     }));

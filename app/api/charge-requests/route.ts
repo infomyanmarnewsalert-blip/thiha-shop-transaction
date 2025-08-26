@@ -1,7 +1,7 @@
 // app/api/charge-requests/route.ts
 export const runtime = "nodejs";
 
-import { supabase, invalidateBalanceCache } from "@/lib/db";
+import { supabase, invalidateBalanceCache, findUserByPhone } from "@/lib/db";
 import { ChargeRequestSchema } from "@/lib/validators";
 import { json, nowISO } from "@/lib/utils";
 import { notifyAdmins, isPushReady } from "@/lib/push";
@@ -18,13 +18,17 @@ export async function GET(req: Request) {
       (searchParams.get("status") as "pending" | "approved" | "all") || "all";
     let query = supabase
       .from("ChargeRequests")
-      .select("*")
+      .select("*, Users(phone_number)")
       .order("requested_at", { ascending: true });
     if (status === "pending") query = query.eq("approved", false);
     if (status === "approved") query = query.eq("approved", true);
     const { data, error } = await query;
     if (error) return json({ error: error.message }, 500);
-    return json({ items: data ?? [] });
+    const items = (data ?? []).map((r: any) => {
+      const { Users, ...rest } = r;
+      return { ...rest, phone: Users?.phone_number };
+    });
+    return json({ items });
   } catch (e: any) {
     return json(
       { error: e?.message ?? "Failed to list charge requests" },
@@ -40,11 +44,23 @@ export async function POST(req: Request) {
   if (!parsed.success) return json({ error: parsed.error.format() }, 400);
   const { phone, amount } = parsed.data;
 
+  let user = await findUserByPhone(phone);
+  if (!user) {
+    const { data: newUser, error: userErr } = await supabase
+      .from("Users")
+      .insert({ phone_number: phone, balance: 0, last_charge_date: "" })
+      .select("id")
+      .single();
+    if (userErr) return json({ error: userErr.message }, 500);
+    user = newUser;
+  }
+  const userId = user.id;
+
   const id = uid();
   const now = nowISO();
   const { error } = await supabase.from("ChargeRequests").insert({
     id,
-    phone,
+    user_id: userId,
     amount,
     approved: false,
     requested_at: now,
@@ -59,8 +75,7 @@ export async function POST(req: Request) {
       url: "/admin/charge-requests",
     });
   }
-
-  return json({ ok: true });
+  return json({ success: true, id });
 }
 
 // PUT: approve charge request {id}
@@ -79,7 +94,7 @@ export async function PUT(req: Request) {
     if (reqData.approved)
       return json({ success: true, already: true }, 200);
 
-    const phone = reqData.phone as string;
+    const userId = reqData.user_id as string | number;
     const amount = Number(reqData.amount ?? 0);
     const now = nowISO();
 
@@ -90,21 +105,16 @@ export async function PUT(req: Request) {
 
     const { data: user } = await supabase
       .from("Users")
-      .select("balance")
-      .eq("phone", phone)
+      .select("phone_number,balance")
+      .eq("id", userId)
       .maybeSingle();
-
-    const newBalance = Number(user?.balance ?? 0) + amount;
-    if (user) {
-      await supabase
-        .from("Users")
-        .update({ balance: newBalance, last_charge_date: now })
-        .eq("phone", phone);
-    } else {
-      await supabase
-        .from("Users")
-        .insert({ phone, balance: newBalance, last_charge_date: now });
-    }
+    if (!user) return json({ success: false, error: "user not found" }, 404);
+    const phone = user.phone_number as string;
+    const newBalance = Number(user.balance ?? 0) + amount;
+    await supabase
+      .from("Users")
+      .update({ balance: newBalance, last_charge_date: now })
+      .eq("id", userId);
 
     invalidateBalanceCache(phone);
     return json({ success: true, balance: newBalance }, 200);

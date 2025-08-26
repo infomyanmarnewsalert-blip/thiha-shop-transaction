@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   // ユーザーが存在しない場合は購入を拒否
   const u = await findUserByPhone(phone);
   if (!u) return json({ error: "unknown phone" }, 400);
-
+  const userId = u.id;
   const current = Number(u.balance ?? 0);
 
   // フロント計算を採用 → quantity/total_amount に正規化
@@ -30,8 +30,8 @@ export async function POST(req: Request) {
 
   const now = nowISO();
   const rows = normalized.map((it) => ({
-    timestamp: now,
-    phone_number: phone,
+    created_at: now,
+    user_id: userId,
     product_id: it.product_id,
     quantity: it.quantity,
     total_amount: it.total_amount,
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   await supabase
     .from("Users")
     .update({ balance: after })
-    .eq("phone", phone);
+    .eq("id", userId);
 
   invalidateBalanceCache(phone);
   return json({ ok: true, total: grand, balance_after: after });
