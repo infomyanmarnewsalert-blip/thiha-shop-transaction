@@ -14,16 +14,22 @@ import {
 } from "@/components/ui/select";
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import LoginRegisterGate from "@/components/ui/login-register-gate";
 import { getSavedPhone } from "@/lib/client-auth";
-import { openAuthGate } from "@/lib/auth-gate";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
+import { fetcher } from "@/lib/fetcher";
+import BalanceGuard from "@/components/ui/BalanceGuard";
+
+// ✅ 追加：ブラウザ用 Supabase クライアントをこのファイル内で作成
+import { createClient } from "@supabase/supabase-js";
+const supabaseBrowser = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
+);
 
 type Product = { id: number; name: string; price: number };
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
-
 export default function PurchasePage() {
+  const { mutate } = useSWRConfig();
   const [selectedProducts, setSelectedProducts] = useState<
     Array<{ id: string; productId: number | null }>
   >([{ id: "1", productId: null }]);
@@ -32,25 +38,76 @@ export default function PurchasePage() {
   const [purchaseData, setPurchaseData] = useState<any>(null);
   const [phone, setPhone] = useState<string | null>(null);
 
-  // 電話番号未保存ならゲートを出す（※APIは叩かない）
+  // 電話番号は state に保持（BalanceGuard がゲート表示を担当）
   useEffect(() => {
-    const saved = getSavedPhone();
-    if (!saved) openAuthGate(undefined, "home");
+    setPhone(getSavedPhone() ?? null);
   }, []);
 
-  // ★ SWR：/api/products を“初回のみ”取得（再検証は全OFF、StrictMode対策でdedupe長め）
+  // /api/balance で登録確認
+  const { data: balanceSnap } = useSWR(
+    phone ? `/api/balance?phone=${encodeURIComponent(phone)}` : null,
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      revalidateIfStale: false,
+      refreshInterval: 0,
+      dedupingInterval: 60_000,
+      shouldRetryOnError: false,
+    }
+  );
+
+  // /api/balance の SWR キーを共通化
+  const balanceKey = useMemo(
+    () => (phone ? `/api/balance?phone=${encodeURIComponent(phone)}` : null),
+    [phone]
+  );
+
+  // APIの残高を balance ステートへ反映
+  useEffect(() => {
+    if (!balanceSnap?.exists) return;
+    const apiBal = Number(balanceSnap.balance);
+    if (Number.isFinite(apiBal) && apiBal !== balance) {
+      setBalance(apiBal);
+    }
+  }, [balanceSnap, balance]);
+
+  // ✅ /api/products を1本の useSWR で管理（バインド版 mutate も取得）
   const {
     data: productsRaw,
     isLoading: loadingProducts,
     error: productsError,
+    mutate: revalidateProducts,
   } = useSWR("/api/products", fetcher, {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-    revalidateIfStale: false,
-    refreshInterval: 0,
-    dedupingInterval: 600_000, // 10分間は重複fetchを抑止
-    shouldRetryOnError: false,
+    revalidateOnFocus: true,
+    dedupingInterval: 3000,
   });
+
+  // ✅ Supabase Realtime 購読（ブラウザ用クライアントで）
+  useEffect(() => {
+    const ch = supabaseBrowser
+      .channel("products-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "Products" },
+        () => revalidateProducts()
+      )
+      .subscribe();
+
+    return () => {
+      supabaseBrowser.removeChannel(ch);
+    };
+  }, [revalidateProducts]);
+
+  // 同一端末の他タブからの通知でも再取得
+  useEffect(() => {
+    const bc = new BroadcastChannel("thiha-shop");
+    const onMsg = (e: MessageEvent<any>) => {
+      if (e.data?.type === "PRODUCTS_CHANGED") revalidateProducts();
+    };
+    bc.addEventListener("message", onMsg);
+    return () => bc.removeEventListener("message", onMsg);
+  }, [revalidateProducts]);
 
   // API が [] でも {items: []} でも動くように正規化
   const products: Product[] = useMemo(() => {
@@ -107,6 +164,13 @@ export default function PurchasePage() {
       .filter((item: any) => item && item.quantity > 0);
   };
 
+  // 追加: レシートを閉じたら選択を初期化
+  const handleReceiptClose = () => {
+    setShowReceipt(false);
+    setPurchaseData(null);
+    setSelectedProducts([{ id: "1", productId: null }]); // 初期状態に戻す
+  };
+
   const handlePurchase = async () => {
     const selectedList = getSelectedProductsList();
     const totalPrice = getTotalPrice();
@@ -120,13 +184,6 @@ export default function PurchasePage() {
       return;
     }
     try {
-      if (!phone) {
-        openAuthGate(
-          "電話番号が未入力です。ログインまたは新規登録をしてください。",
-          "home"
-        );
-        return;
-      }
       const response = await fetch("/api/purchase", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -142,10 +199,26 @@ export default function PurchasePage() {
       });
       const result = await response.json();
       if (response.ok) {
-        const newBal = Number(
-          result.balance_after ?? balance - getTotalPrice()
-        );
+        const newBal = Number(result.balance_after ?? balance - totalPrice);
         setBalance(newBal);
+
+        // /api/balance を即時更新（SWRキャッシュ差し替え）
+        if (balanceKey) {
+          mutate(
+            balanceKey,
+            (prev: any) => ({ ...(prev ?? { exists: true }), balance: newBal }),
+            { revalidate: false }
+          );
+          mutate(balanceKey);
+        }
+
+        // 他タブへ通知
+        new BroadcastChannel("thiha-shop").postMessage({
+          type: "BALANCE_CHANGED",
+          phone,
+          newBalance: newBal,
+        });
+
         setPurchaseData({
           products: selectedList,
           totalPrice,
@@ -215,10 +288,7 @@ export default function PurchasePage() {
                 管理者に証明画面を見せてください、その後OKボタンを押してください
               </div>
 
-              <Button
-                onClick={() => setShowReceipt(false)}
-                className="w-full h-12"
-              >
+              <Button onClick={handleReceiptClose} className="w-full h-12">
                 OK
               </Button>
             </CardContent>
@@ -230,12 +300,7 @@ export default function PurchasePage() {
 
   return (
     <>
-      <LoginRegisterGate
-        onAuthed={(p, b) => {
-          setPhone(p);
-          setBalance(b);
-        }}
-      />
+      <BalanceGuard />
       <div className="min-h-screen bg-background">
         <header className="bg-card border-b border-border">
           <div className="max-w-md mx-auto px-4 py-4">
@@ -266,7 +331,7 @@ export default function PurchasePage() {
               <Link href="/charge">
                 <Button
                   variant="outline"
-                  className="w-full h-12 bg-transparent border-primary text-primary hover:bg-primary/10"
+                  className="w-full h-12 bg透明 border-primary text-primary hover:bg-primary/10"
                 >
                   <CreditCard className="w-5 h-5 mr-2" />
                   残高をチャージする

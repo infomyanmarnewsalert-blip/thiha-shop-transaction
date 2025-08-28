@@ -8,8 +8,6 @@ import { notifyAdmins, isPushReady } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
-const uid = () => crypto.randomUUID?.() || Math.random().toString(36).slice(2);
-
 // GET: /api/charge-requests?status=pending|approved|all
 export async function GET(req: Request) {
   try {
@@ -30,10 +28,7 @@ export async function GET(req: Request) {
     });
     return json({ items });
   } catch (e: any) {
-    return json(
-      { error: e?.message ?? "Failed to list charge requests" },
-      500
-    );
+    return json({ error: e?.message ?? "Failed to list charge requests" }, 500);
   }
 }
 
@@ -54,18 +49,19 @@ export async function POST(req: Request) {
     if (userErr) return json({ error: userErr.message }, 500);
     user = newUser;
   }
-  const userId = user.id;
 
-  const id = uid();
+  const userId = user.id;
   const now = nowISO();
-  const { error } = await supabase.from("ChargeRequests").insert({
-    id,
-    user_id: userId,
-    amount,
-    approved: false,
-    requested_at: now,
-    approved_at: null,
-  });
+  // ✅ id は指定しない。DB が採番した id を返す
+  const { data: inserted, error } = await supabase
+    .from("ChargeRequests")
+    .insert({
+      user_id: userId,
+      amount,
+      approved: false,
+    })
+    .select("id")
+    .single();
   if (error) return json({ error: error.message }, 500);
 
   if (isPushReady()) {
@@ -75,24 +71,28 @@ export async function POST(req: Request) {
       url: "/admin/charge-requests",
     });
   }
-  return json({ success: true, id });
+  return json({ success: true, id: inserted.id });
 }
 
 // PUT: approve charge request {id}
 export async function PUT(req: Request) {
   try {
     const { id } = await req.json().catch(() => ({}));
-    if (!id) return json({ success: false, error: "id is required" }, 400);
+    if (id == null)
+      return json({ success: false, error: "id is required" }, 400);
+    // ✅ bigint 対応（数値化して検索）
+    const idNum = Number(id);
+    if (!Number.isFinite(idNum))
+      return json({ success: false, error: "invalid id" }, 400);
 
     const { data: reqData, error: reqErr } = await supabase
       .from("ChargeRequests")
       .select("*")
-      .eq("id", id)
+      .eq("id", idNum)
       .maybeSingle();
     if (reqErr || !reqData)
       return json({ success: false, error: "not found" }, 404);
-    if (reqData.approved)
-      return json({ success: true, already: true }, 200);
+    if (reqData.approved) return json({ success: true, already: true }, 200);
 
     const userId = reqData.user_id as string | number;
     const amount = Number(reqData.amount ?? 0);
@@ -100,8 +100,8 @@ export async function PUT(req: Request) {
 
     await supabase
       .from("ChargeRequests")
-      .update({ approved: true, approved_at: now })
-      .eq("id", id);
+      .update({ approved: true })
+      .eq("id", idNum);
 
     const { data: user } = await supabase
       .from("Users")
@@ -126,4 +126,3 @@ export async function PUT(req: Request) {
 export async function OPTIONS() {
   return new Response(null, { status: 204 });
 }
-

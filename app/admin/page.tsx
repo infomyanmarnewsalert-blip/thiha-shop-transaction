@@ -1,6 +1,6 @@
 "use client";
 
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import useSWRImmutable from "swr/immutable";
 import { useState, useEffect } from "react";
 import { fetcher } from "@/lib/fetcher";
@@ -39,36 +39,79 @@ type AdminChargeRequest = {
   currentBalance?: number;
 };
 
+// 数字だけに正規化
+const normalizePhone = (p?: string) => (p ?? "").replace(/\D/g, "");
+
+// 1行の現在残高セル
+function BalanceCell({ phone }: { phone: string }) {
+  const normalized = normalizePhone(phone);
+  const key = normalized
+    ? `/api/balance?phone=${encodeURIComponent(normalized)}`
+    : null;
+  const { data } = useSWR(key, (u) => fetch(u!).then((r) => r.json()), {
+    revalidateOnFocus: true,
+    dedupingInterval: 4000,
+  });
+  const bal = data?.exists ? Number(data.balance) : 0;
+  return <>¥{(Number.isFinite(bal) ? bal : 0).toLocaleString()}</>;
+}
+
 export default function AdminPage() {
+  const { mutate } = useSWRConfig();
+
   const [activeTab, setActiveTab] = useState("charge");
   const [notification, setNotification] = useState("");
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [newProduct, setNewProduct] = useState({ name: "", price: "" });
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isAddOpen, setIsAddOpen] = useState(false);
 
-  // 変わりにくい商品は immutable（初回のみ取得・手動で再取得する）
+  // 商品は immutable
   const {
     data: productsRaw,
     isLoading: loadingProducts,
     mutate: refetchProducts,
   } = useSWRImmutable("/api/products", fetcher);
 
-  // チャージリクエストは通常SWR（自動再検証は全OFF）
+  // チャージリクエストは通常SWR
   const {
     data: chargeRaw,
     isLoading: loadingCR,
     mutate: refetchCharge,
   } = useSWR("/api/charge-requests?status=all", fetcher, {
-    revalidateOnFocus: false,
+    revalidateOnFocus: true,
     revalidateOnReconnect: false,
     revalidateIfStale: false,
     dedupingInterval: 10_000,
-    refreshInterval: 0,
+    refreshInterval: activeTab === "charge" ? 5000 : 0,
     shouldRetryOnError: false,
   });
 
-  // /api/products は {items: []} でも [] でもOKにする & 画面の型に合わせて整形
+  // BroadcastChannel で変更検知
+  useEffect(() => {
+    const bc = new BroadcastChannel("thiha-shop");
+    const onMsg = (e: MessageEvent<any>) => {
+      const msg = e.data || {};
+      if (msg.type === "CR_CHANGED") refetchCharge();
+      if (msg.type === "BALANCE_CHANGED" && msg.phone) {
+        const key = `/api/balance?phone=${encodeURIComponent(
+          normalizePhone(msg.phone)
+        )}`;
+        mutate(key);
+      }
+      if (msg.type === "BALANCE_CHANGED_ALL") {
+        mutate(
+          (key) =>
+            typeof key === "string" && key.startsWith("/api/balance?phone=")
+        );
+      }
+    };
+    bc.addEventListener("message", onMsg);
+    return () => bc.removeEventListener("message", onMsg);
+  }, [mutate, refetchCharge]);
+
+  // products 整形
   const products: any[] = (
     Array.isArray(productsRaw) ? productsRaw : productsRaw?.items ?? []
   ).map((p: any) => ({
@@ -77,11 +120,11 @@ export default function AdminPage() {
     price: Number(p.price ?? 0),
   }));
 
-  // /api/charge-requests も同様に整形（既存と同じキーへ正規化）
+  // charge-requests 整形
   const requests: AdminChargeRequest[] = (
     Array.isArray(chargeRaw) ? chargeRaw : chargeRaw?.items ?? []
   ).map((r: any) => ({
-    id: r.id ?? r.request_id ?? r.uuid,
+    id: String(r.id ?? r.request_id ?? r.uuid),
     phone: r.phone ?? r.phone_number ?? r.Users?.phone_number,
     amount: Number(r.amount ?? 0),
     approved:
@@ -90,23 +133,40 @@ export default function AdminPage() {
         : String(r.approved).toLowerCase() === "true",
     requested_at: r.requested_at ?? r.createdAt ?? r.created_at ?? "",
     approved_at: r.approved_at ?? r.approvedAt ?? "",
-    currentBalance: r.currentBalance ?? r.balance,
+    currentBalance: undefined,
   }));
 
-  const handleApprove = async (requestId: string) => {
+  // 承認
+  const handleApprove = async (req: AdminChargeRequest) => {
     setIsLoading(true);
     try {
       const response = await fetch("/api/charge-requests", {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ id: requestId }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: req.id }),
       });
-
       const result = await response.json();
       if (result.success) {
-        await refetchCharge(); // ← 一括で最新化（同キーのみ）
+        await refetchCharge();
+        const key = `/api/balance?phone=${encodeURIComponent(
+          normalizePhone(req.phone)
+        )}`;
+        mutate(
+          key,
+          (prev: any) => {
+            const cur = Number(prev?.balance ?? 0);
+            return {
+              ...(prev ?? { exists: true }),
+              balance: cur + Number(req.amount || 0),
+            };
+          },
+          { revalidate: false }
+        );
+        mutate(key);
+        new BroadcastChannel("thiha-shop").postMessage({
+          type: "BALANCE_CHANGED",
+          phone: req.phone,
+        });
         setNotification("チャージリクエストを承認しました");
         setTimeout(() => setNotification(""), 3000);
       } else {
@@ -122,24 +182,17 @@ export default function AdminPage() {
     }
   };
 
+  // 編集
   const handleEditProduct = async (product: any) => {
     try {
-      const response = await fetch("/api/products", {
+      const response = await fetch(`/api/products/${product.id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-          body: JSON.stringify({
-            id: product.id,
-            name: product.name,
-            price: product.price,
-          }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: product.name, price: product.price }),
       });
-
       const result = await response.json();
       if (result.success) {
-        await refetchProducts(); // ← 最新化
-        setEditingProduct(null);
+        await refetchProducts();
         setEditingProduct(null);
         setNotification("商品を更新しました");
         setTimeout(() => setNotification(""), 3000);
@@ -151,30 +204,58 @@ export default function AdminPage() {
     }
   };
 
-  const handleDeleteProduct = (productId: number) => {
-    setNotification("商品の削除は手動で行ってください");
-    setTimeout(() => setNotification(""), 3000);
+  // 削除
+  const handleDeleteProduct = async (product: {
+    id: number;
+    name?: string;
+  }) => {
+    const id = product.id;
+    if (!Number.isInteger(id)) {
+      setNotification("削除に失敗しました（ID不正）");
+      setTimeout(() => setNotification(""), 3000);
+      return;
+    }
+    const ok = window.confirm(
+      `「${product.name ?? id}」を削除します。よろしいですか？`
+    );
+    if (!ok) return;
+
+    try {
+      const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
+      const result = await res.json().catch(() => ({}));
+      if (res.ok && result?.success !== false) {
+        await refetchProducts();
+        setNotification("商品を削除しました");
+      } else {
+        setNotification(
+          `商品の削除に失敗しました：${result?.error ?? res.statusText}`
+        );
+      }
+    } catch (e) {
+      console.error("Product delete failed:", e);
+      setNotification("商品の削除に失敗しました");
+    } finally {
+      setTimeout(() => setNotification(""), 3000);
+    }
   };
 
+  // 追加
   const handleAddProduct = async () => {
     if (!newProduct.name || !newProduct.price) return;
-
     try {
       const response = await fetch("/api/products", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: newProduct.name,
           price: Number(newProduct.price),
         }),
       });
-
       const result = await response.json();
       if (result.success) {
-        await refetchProducts(); // ← 最新化
+        await refetchProducts();
         setNewProduct({ name: "", price: "" });
+        setIsAddOpen(false);
         setNotification("商品を追加しました");
         setTimeout(() => setNotification(""), 3000);
       }
@@ -188,7 +269,6 @@ export default function AdminPage() {
   const filteredProducts = products.filter((product) =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
   const pendingRequests = requests.filter((req) => !req.approved);
   const processedRequests = requests.filter((req) => req.approved);
 
@@ -238,16 +318,21 @@ export default function AdminPage() {
           </Button>
         </div>
 
-        {/* Charge Request Management */}
+        {/* Charge Request Management（このカード内だけ縦スクロール） */}
         {activeTab === "charge" && (
-          <Card>
+          <Card className="max-h-[75vh] flex flex-col overflow-hidden">
             <CardHeader>
               <CardTitle className="text-lg font-black">
                 チャージリクエスト管理
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="pending" className="w-full">
+
+            {/* ヘッダーを除いた残りの高さを占有。ここでは overflow は隠す */}
+            <CardContent className="flex-1 flex flex-col overflow-hidden">
+              <Tabs
+                defaultValue="pending"
+                className="flex-1 flex flex-col w-full"
+              >
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="pending">
                     承認待ち ({pendingRequests.length})
@@ -255,94 +340,110 @@ export default function AdminPage() {
                   <TabsTrigger value="processed">処理済み</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="pending" className="space-y-4 mt-6">
+                {/* 承認待ち：タブの中で “だけ” スクロール */}
+                <TabsContent
+                  value="pending"
+                  className="flex-1 overflow-hidden mt-6"
+                >
                   {pendingRequests.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       承認待ちのリクエストはありません
                     </div>
                   ) : (
-                    pendingRequests.map((request) => (
-                      <Card
-                        key={request.id}
-                        className="border-2 border-primary/20"
-                      >
-                        <CardContent className="p-3">
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-semibold">
-                                  {request.phone}
-                                </span>
-                                <Badge
-                                  variant="secondary"
-                                  className="bg-primary/10 text-primary"
+                    <div className="h-full overflow-y-auto pr-2 -mr-2">
+                      <div className="grid grid-cols-1 gap-4">
+                        {pendingRequests.map((request) => (
+                          <Card
+                            key={request.id}
+                            className="border-2 border-primary/20"
+                          >
+                            <CardContent className="p-3">
+                              <div className="flex items-center justify-between">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold">
+                                      {request.phone}
+                                    </span>
+                                    <Badge
+                                      variant="secondary"
+                                      className="bg-primary/10 text-primary"
+                                    >
+                                      承認待ち
+                                    </Badge>
+                                  </div>
+                                  <div className="text-sm text-muted-foreground">
+                                    チャージ額: ¥
+                                    {request.amount.toLocaleString()} |
+                                    現在残高:{" "}
+                                    <BalanceCell phone={request.phone} />
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {request.requested_at}
+                                  </div>
+                                </div>
+                                <Button
+                                  onClick={() => handleApprove(request)}
+                                  size="sm"
+                                  className="h-8"
+                                  disabled={isLoading}
                                 >
-                                  承認待ち
-                                </Badge>
+                                  <Check className="w-4 h-4 mr-1" />
+                                  承認
+                                </Button>
                               </div>
-                              <div className="text-sm text-muted-foreground">
-                                チャージ額: ¥{request.amount.toLocaleString()} |
-                                現在残高: ¥
-                                {request.currentBalance?.toLocaleString() ||
-                                  "0"}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {request.requested_at}
-                              </div>
-                            </div>
-                            <Button
-                              onClick={() => handleApprove(request.id)}
-                              size="sm"
-                              className="h-8"
-                              disabled={isLoading}
-                            >
-                              <Check className="w-4 h-4 mr-1" />
-                              承認
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </TabsContent>
 
-                <TabsContent value="processed" className="space-y-4 mt-6">
+                {/* 処理済み：同じくタブ内スクロール */}
+                <TabsContent
+                  value="processed"
+                  className="flex-1 overflow-hidden mt-6"
+                >
                   {processedRequests.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       処理済みのリクエストはありません
                     </div>
                   ) : (
-                    processedRequests.map((request) => (
-                      <Card key={request.id}>
-                        <CardContent className="p-3">
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-semibold">
-                                  {request.phone}
-                                </span>
-                                <Badge
-                                  variant="secondary"
-                                  className="bg-green-100 text-green-800"
-                                >
-                                  承認済み
-                                </Badge>
+                    <div className="h-full overflow-y-auto pr-2 -mr-2">
+                      <div className="grid grid-cols-1 gap-4">
+                        {processedRequests.map((request) => (
+                          <Card key={request.id}>
+                            <CardContent className="p-3">
+                              <div className="flex items-center justify-between">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold">
+                                      {request.phone}
+                                    </span>
+                                    <Badge
+                                      variant="secondary"
+                                      className="bg-green-100 text-green-800"
+                                    >
+                                      承認済み
+                                    </Badge>
+                                  </div>
+                                  <div className="text-sm text-muted-foreground">
+                                    チャージ額: ¥
+                                    {request.amount.toLocaleString()} |
+                                    現在残高:{" "}
+                                    <BalanceCell phone={request.phone} />
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    リクエスト: {request.requested_at} | 承認:{" "}
+                                    {request.approved_at}
+                                  </div>
+                                </div>
                               </div>
-                              <div className="text-sm text-muted-foreground">
-                                チャージ額: ¥{request.amount.toLocaleString()} |
-                                現在残高: ¥
-                                {request.currentBalance?.toLocaleString() ||
-                                  "0"}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                リクエスト: {request.requested_at} | 承認:{" "}
-                                {request.approved_at}
-                              </div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </TabsContent>
               </Tabs>
@@ -350,15 +451,15 @@ export default function AdminPage() {
           </Card>
         )}
 
-        {/* ... existing code for products and analytics tabs ... */}
+        {/* Products tab */}
         {activeTab === "products" && (
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg font-black">商品管理</CardTitle>
-                <Dialog>
+                <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                   <DialogTrigger asChild>
-                    <Button size="sm">
+                    <Button size="sm" onClick={() => setIsAddOpen(true)}>
                       <Plus className="w-4 h-4 mr-1" />
                       商品追加
                     </Button>
@@ -438,67 +539,17 @@ export default function AdminPage() {
                           </td>
                           <td className="py-3 px-4 text-right">
                             <div className="flex gap-2 justify-end">
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setEditingProduct(product)}
-                                  >
-                                    <Edit className="w-4 h-4" />
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                  <DialogHeader>
-                                    <DialogTitle>商品を編集</DialogTitle>
-                                  </DialogHeader>
-                                  {editingProduct && (
-                                    <div className="space-y-4">
-                                      <div>
-                                        <Label htmlFor="edit-name">
-                                          商品名
-                                        </Label>
-                                        <Input
-                                          id="edit-name"
-                                          value={editingProduct.name}
-                                          onChange={(e) =>
-                                            setEditingProduct((prev: any) => ({
-                                              ...prev,
-                                              name: e.target.value,
-                                            }))
-                                          }
-                                        />
-                                      </div>
-                                      <div>
-                                        <Label htmlFor="edit-price">価格</Label>
-                                        <Input
-                                          id="edit-price"
-                                          type="number"
-                                          value={editingProduct.price}
-                                          onChange={(e) =>
-                                            setEditingProduct((prev: any) => ({
-                                              ...prev,
-                                              price: Number(e.target.value),
-                                            }))
-                                          }
-                                        />
-                                      </div>
-                                      <Button
-                                        onClick={() =>
-                                          handleEditProduct(editingProduct)
-                                        }
-                                        className="w-full"
-                                      >
-                                        更新
-                                      </Button>
-                                    </div>
-                                  )}
-                                </DialogContent>
-                              </Dialog>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleDeleteProduct(product.id)}
+                                onClick={() => setEditingProduct(product)}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteProduct(product)}
                                 className="text-destructive hover:text-destructive"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -517,6 +568,60 @@ export default function AdminPage() {
                   「{searchTerm}」に一致する商品が見つかりません
                 </div>
               )}
+
+              {/* 単一・制御モーダル：編集 */}
+              <Dialog
+                open={!!editingProduct}
+                onOpenChange={(open) => {
+                  if (!open) setEditingProduct(null);
+                }}
+              >
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>商品を編集</DialogTitle>
+                  </DialogHeader>
+
+                  {editingProduct && (
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="edit-name">商品名</Label>
+                        <Input
+                          id="edit-name"
+                          value={editingProduct.name}
+                          onChange={(e) =>
+                            setEditingProduct((prev: any) => ({
+                              ...prev,
+                              name: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="edit-price">価格</Label>
+                        <Input
+                          id="edit-price"
+                          type="number"
+                          value={editingProduct.price}
+                          onChange={(e) =>
+                            setEditingProduct((prev: any) => ({
+                              ...prev,
+                              price: Number(e.target.value),
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <Button
+                        onClick={() => handleEditProduct(editingProduct)}
+                        className="w-full"
+                      >
+                        更新
+                      </Button>
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
             </CardContent>
           </Card>
         )}

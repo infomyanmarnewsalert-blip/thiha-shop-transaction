@@ -11,15 +11,24 @@ export async function GET(req: Request) {
       headers: { "content-type": "application/json" },
     });
   }
+
   const snap = await getBalanceFast(phone);
-  if (!snap.exists) {
-    return new Response(JSON.stringify({ exists: false, error: "not found" }), {
-      status: 404,
-      headers: { "content-type": "application/json" },
+
+  // 404にせず、200 + {exists:false} を返す
+  if (!snap?.exists) {
+    return new Response(JSON.stringify({ exists: false }), {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "cache-control": "public, max-age=2",
+      },
     });
   }
+
+  // 見つかった場合は exists:true を明示して返す
   return new Response(
     JSON.stringify({
+      exists: true,
       phone,
       balance: snap.balance,
       last_charge_date: snap.last_charge_date,

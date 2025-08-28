@@ -130,13 +130,18 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ phone: p }),
       });
-      const j = await r.json();
-      if (r.ok && j.created) {
+      const j: any = await r.json().catch(() => ({}));
+
+      // ★ 成功判定を新旧レスポンス両対応に
+      const isOk =
+        r.ok && (j?.ok === true || typeof j?.created !== "undefined");
+
+      if (isOk) {
         localStorage.setItem(PHONE_KEY, p);
         setOpen(false);
-        onAuthed(p, Number(j.balance ?? 0));
+        onAuthed(p, Number(j?.balance ?? 0));
       } else {
-        setError(j?.message || "登録に失敗しました");
+        setError(j?.error || j?.message || "登録に失敗しました");
       }
     } catch {
       setError("通信に失敗しました");

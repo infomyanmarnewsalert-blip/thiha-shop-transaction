@@ -27,7 +27,8 @@ export default function ChargePage() {
       return;
     }
 
-    if (!chargeAmount || Number.parseInt(chargeAmount) <= 0) {
+    const amt = Number.parseInt(String(chargeAmount), 10);
+    if (!chargeAmount || !Number.isFinite(amt) || amt <= 0) {
       setError("チャージ金額を正しく入力してください");
       return;
     }
@@ -43,22 +44,31 @@ export default function ChargePage() {
         },
         body: JSON.stringify({
           phone: phoneNumber,
-          amount: Number.parseInt(chargeAmount),
+          amount: amt,
         }),
       });
 
       const result = await response.json();
+      if (!response.ok || !result?.success) {
+        // API が message を返している場合は表示
+        setError(result?.error || "リクエストの送信に失敗しました");
+        return;
+      }
+      const requestIdStr = result?.id != null ? String(result.id) : "";
       if (result.success) {
         setRequestData({
           phoneLastFour: phoneNumber.slice(-4),
-          amount: Number.parseInt(chargeAmount),
+          amount: amt,
           timestamp: new Date().toLocaleString("ja-JP"),
           status: "pending",
-          requestId: result.id,
+          requestId: requestIdStr,
         });
         setShowProof(true);
-      } else {
-        setError("リクエストの送信に失敗しました");
+
+        // 管理者画面へ「CR_CHANGED」を通知 → 一覧SWRを mutate して即反映
+        new BroadcastChannel("thiha-shop").postMessage({
+          type: "CR_CHANGED",
+        });
       }
     } catch (err) {
       console.error("Charge request failed:", err);

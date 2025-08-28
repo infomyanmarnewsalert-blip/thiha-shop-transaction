@@ -1,0 +1,191 @@
+@@
+-"use client";
+-
+-import useSWR from "swr";
++"use client";
++
++import useSWR, { useSWRConfig } from "swr";
+@@
+ type AdminChargeRequest = {
+@@
+ };
+ 
+-// 数字だけに正規化（ハイフン/空白/国番号揺れ対策）
+-const normalizePhone = (p?: string) => (p ?? "").replace(/\D/g, "");
++// 数字だけに正規化（ハイフン/空白/国番号揺れ対策）
++const normalizePhone = (p?: string) => (p ?? "").replace(/\D/g, "");
++
++// ★ 各行の現在残高を SWR で取得して描画する小コンポーネント
++function BalanceCell({ phone }: { phone: string }) {
++  const normalized = normalizePhone(phone);
++  const key = normalized ? `/api/balance?phone=${encodeURIComponent(normalized)}` : null;
++  const { data } = useSWR(key, (u) => fetch(u!).then(r => r.json()), {
++    revalidateOnFocus: true,
++    dedupingInterval: 4000,
++  });
++  const bal = data?.exists ? Number(data.balance) : 0;
++  return <>¥{(Number.isFinite(bal) ? bal : 0).toLocaleString()}</>;
++}
+ 
+ export default function AdminPage() {
++  const { mutate } = useSWRConfig();
+@@
+   } = useSWR("/api/charge-requests?status=all", fetcher, {
+-    revalidateOnFocus: false,
++    revalidateOnFocus: true,      // ← フォーカス復帰で最新化
+     revalidateOnReconnect: false,
+     revalidateIfStale: false,
+     dedupingInterval: 10_000,
+-    refreshInterval: 0,
++    refreshInterval: 0,           // （Realtimeを切るなら 5000 などに）
+     shouldRetryOnError: false,
+   });
+ 
+-  // ★ Realtime購読: INSERT/UPDATE を受けたら一覧を再フェッチ
++  // ★ Realtime購読: INSERT/UPDATE を受けたら SWR で再検証
+   useEffect(() => {
+     const supabase = createClient(
+       process.env.NEXT_PUBLIC_SUPABASE_URL!,
+       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+     );
+     const channel = supabase
+       .channel("admin-charge-requests")
+       .on(
+         "postgres_changes",
+         { event: "INSERT", schema: "public", table: "ChargeRequests" },
+-        () => refetchCharge()
++        () => {
++          refetchCharge();                                           // 一覧を最新化
++          mutate((key) => typeof key === "string" && key.startsWith("/api/balance?phone=")); // 全行の残高も更新
++        }
+       )
+       .on(
+         "postgres_changes",
+         { event: "UPDATE", schema: "public", table: "ChargeRequests" },
+-        () => refetchCharge()
++        () => {
++          refetchCharge();
++          mutate((key) => typeof key === "string" && key.startsWith("/api/balance?phone="));
++        }
+       )
+       // ★ 追加：Users.balance が変わったら currentBalance も更新
+       .on(
+         "postgres_changes",
+         { event: "UPDATE", schema: "public", table: "Users" },
+-        () => refetchCharge()
++        () => {
++          // ChargeRequests の行自体は不変でも、残高だけ更新したい
++          mutate((key) => typeof key === "string" && key.startsWith("/api/balance?phone="));
++        }
+       )
+       // （任意）削除に備えるなら DELETE も拾う
+       .on(
+         "postgres_changes",
+         { event: "DELETE", schema: "public", table: "ChargeRequests" },
+-        () => refetchCharge()
++        () => {
++          refetchCharge();
++          mutate((key) => typeof key === "string" && key.startsWith("/api/balance?phone="));
++        }
+       )
+       .subscribe();
+     return () => {
+       supabase.removeChannel(channel);
+     };
+   }, [refetchCharge, mutate]);
+ 
+-  // ★ 各電話番号の残高をまとめて取得（APIが current_balance を返さない場合のフォールバック）
+-  const [balanceMap, setBalanceMap] = useState<Record<string, number>>({});
+-  // 依存キー（同じ番号の重複を排除してからソート）
+-  const phonesKey = (
+-    Array.isArray(chargeRaw) ? chargeRaw : chargeRaw?.items ?? []
+-  )
+-    .map((r: any) =>
+-      normalizePhone(r?.phone ?? r?.phone_number ?? r?.Users?.phone_number)
+-    )
+-    .filter((v: string) => !!v)
+-    .sort()
+-    .join(",");
+-
+-  useEffect(() => {
+-    if (!phonesKey) return;
+-    const phones = Array.from(new Set(phonesKey.split(","))).filter(Boolean);
+-    let cancelled = false;
+-    (async () => {
+-      const entries: [string, number][] = await Promise.all(
+-        phones.map(async (ph) => {
+-          try {
+-            const res = await fetch(
+-              `/api/balance?phone=${encodeURIComponent(ph as string)}`
+-            );
+-            const json = await res.json();
+-            const bal = json?.exists ? Number(json.balance) : 0;
+-            return [ph, Number.isFinite(bal) ? bal : 0] as [string, number];
+-          } catch {
+-            return [ph, 0] as [string, number];
+-          }
+-        })
+-      );
+-      if (!cancelled) {
+-        setBalanceMap((prev) => {
+-          const next = { ...prev };
+-          for (const [ph, bal] of entries) next[ph] = bal;
+-          return next;
+-        });
+-      }
+-    })();
+-    return () => {
+-      cancelled = true;
+-    };
+-  }, [phonesKey]);
++  // ↑ balanceMap の手動フェッチは削除。各行が SWR で自分の残高を読む。
+@@
+   const requests: AdminChargeRequest[] = (
+     Array.isArray(chargeRaw) ? chargeRaw : chargeRaw?.items ?? []
+   ).map((r: any) => ({
+@@
+     requested_at: r.requested_at ?? r.createdAt ?? r.created_at ?? "",
+     approved_at: r.approved_at ?? r.approvedAt ?? "",
+-    // ★ APIが snake_case を返すケースを拾い、無ければ /api/balance の結果で補完
+-    currentBalance: Number(
+-      (r.currentBalance ??
+-        r.current_balance ??
+-        r.balance ??
+-        balanceMap[
+-          normalizePhone(r.phone ?? r.phone_number ?? r.Users?.phone_number)
+-        ] ??
+-        0) as number
+-    ),
++    // currentBalance は描画時に <BalanceCell> で取得
++    currentBalance: undefined,
+   }));
+@@
+       const result = await response.json();
+       if (result.success) {
+-        await refetchCharge(); // ← 一括で最新化
++        await refetchCharge(); // ← 一覧の最新化
++        // ★ 残高セルも再検証（承認により Users.balance が変わるため）
++        mutate((key) => typeof key === "string" && key.startsWith("/api/balance?phone="));
+         setNotification("チャージリクエストを承認しました");
+         setTimeout(() => setNotification(""), 3000);
+       } else {
+@@
+                   {pendingRequests.length === 0 ? (
+@@
+                               <div className="text-sm text-muted-foreground">
+                                 チャージ額: ¥{request.amount.toLocaleString()} |
+-                                現在残高: ¥
+-                                {(Number.isFinite(request.currentBalance)
+-                                  ? (request.currentBalance as number)
+-                                  : 0
+-                                ).toLocaleString()}
++                                現在残高: <BalanceCell phone={request.phone} />
+                               </div>
+@@
+                               <div className="text-sm text-muted-foreground">
+                                 チャージ額: ¥{request.amount.toLocaleString()} |
+-                                現在残高: ¥
+-                                {request.currentBalance?.toLocaleString() ||
+-                                  "0"}
++                                現在残高: <BalanceCell phone={request.phone} />
+                               </div>
