@@ -39,6 +39,11 @@ export default function BalanceGuard({ children }: BalanceGuardProps) {
     setPhone(p);
   }, []);
 
+  new BroadcastChannel("thiha-shop").postMessage({
+    type: "LOGIN_SUCCESS",
+    phone,
+  });
+
   // 電話番号未設定 → Gate 表示
   if (!phone) return <LoginRegisterGate onAuthed={handleAuthed} />;
 

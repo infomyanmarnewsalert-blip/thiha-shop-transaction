@@ -43,25 +43,50 @@ export default function PurchasePage() {
     setPhone(getSavedPhone() ?? null);
   }, []);
 
-  // /api/balance で登録確認
-  const { data: balanceSnap } = useSWR(
-    phone ? `/api/balance?phone=${encodeURIComponent(phone)}` : null,
-    fetcher,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      revalidateIfStale: false,
-      refreshInterval: 0,
-      dedupingInterval: 60_000,
-      shouldRetryOnError: false,
-    }
-  );
+  // ★ 追加1：BroadcastChannel でログイン完了を検知（BalanceGuard 側で通知を送る）
+  useEffect(() => {
+    const bc = new BroadcastChannel("thiha-shop");
+    const onMsg = (e: MessageEvent<any>) => {
+      const msg = e.data || {};
+      if (msg.type === "LOGIN_SUCCESS" || msg.type === "PHONE_SAVED") {
+        // payload に phone があればそれを、なければ getSavedPhone() で再取得
+        const ph = msg.phone ?? getSavedPhone() ?? null;
+        // 変更がないなら何もしない（無駄な再フェッチを防ぐ）
+        setPhone((prev) => (prev === ph ? prev : ph));
+      }
+    };
+    bc.addEventListener("message", onMsg);
+    return () => bc.removeEventListener("message", onMsg);
+  }, []);
 
   // /api/balance の SWR キーを共通化
-  const balanceKey = useMemo(
-    () => (phone ? `/api/balance?phone=${encodeURIComponent(phone)}` : null),
+  const normalizedPhone = useMemo(
+    () => (phone ? phone.replace(/\D/g, "") : null),
     [phone]
   );
+  const balanceKey = useMemo(
+    () =>
+      normalizedPhone
+        ? `/api/balance?phone=${encodeURIComponent(normalizedPhone)}`
+        : null,
+    [normalizedPhone]
+  );
+
+  // ★ ログイン直後に /api/balance を即時取り直す
+  useEffect(() => {
+    if (!balanceKey) return;
+    mutate(balanceKey);
+  }, [balanceKey, mutate]);
+
+  // /api/balance 取得
+  const { data: balanceSnap } = useSWR(balanceKey, fetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    revalidateIfStale: false,
+    refreshInterval: 0,
+    dedupingInterval: 60_000,
+    shouldRetryOnError: false,
+  });
 
   // APIの残高を balance ステートへ反映
   useEffect(() => {

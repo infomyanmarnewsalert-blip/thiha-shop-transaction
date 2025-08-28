@@ -1,4 +1,4 @@
-// /components/login-register-gate.tsx
+// components/ui/login-register-gate.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -12,8 +12,16 @@ type Props = {
 
 const PHONE_KEY = "thiha_phone";
 
-function isValidPhone(v: string) {
-  return /^[0-9+\-\s]{3,}$/.test(v.trim());
+/** 電話番号: 国内形式のみ（09で始まり数字のみ・全体8〜11桁） */
+export function isValidPhone(input: string): boolean {
+  const digits = input.trim().replace(/\D/g, ""); // 数字以外を除去
+  return /^09\d{6,9}$/.test(digits); // 09 + 数字6〜9桁 = 8〜11桁
+}
+
+/** 入力値を保存用に正規化（国内形式のみ受理）→ 09... の数字列を返す */
+export function normalizeToDomestic(input: string): string | null {
+  const digits = input.trim().replace(/\D/g, "");
+  return /^09\d{6,9}$/.test(digits) ? digits : null;
 }
 
 export default function LoginRegisterGate({ onAuthed }: Props) {
@@ -35,12 +43,21 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
   useEffect(() => {
     if (didBoot.current) return;
     didBoot.current = true;
+
     const saved =
       typeof window !== "undefined" ? localStorage.getItem(PHONE_KEY) : null;
+
     if (saved) {
       // ★ そのまま通す（モーダルは出さない）
       setOpen(false);
       onAuthedRef.current(saved, 0);
+
+      // ★ 他タブ/他コンポーネントへもログイン状態を通知
+      new BroadcastChannel("thiha-shop").postMessage({
+        type: "LOGIN_SUCCESS",
+        phone: saved,
+      });
+
       // ★ 裏で最新残高だけ取得（UIはブロックしない）
       fetch(`/api/balance?phone=${encodeURIComponent(saved)}`, {
         cache: "no-store",
@@ -89,21 +106,35 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
 
   async function doLogin() {
     setError(null);
-    const p = phone.trim();
-    if (!isValidPhone(p)) {
-      setError("電話番号を正しく入力してください");
+
+    const normalized = normalizeToDomestic(phone);
+    if (!normalized) {
+      setError(
+        "「09」で始まる数字のみ、合計8〜11桁で入力してください（例: 09000000000）"
+      );
       return;
     }
+
     setLoading(true);
     try {
-      const r = await fetch(`/api/auth/check?phone=${encodeURIComponent(p)}`, {
-        cache: "no-store",
-      });
+      // ★ 送信も保存も正規化した 09... を使用
+      const r = await fetch(
+        `/api/auth/check?phone=${encodeURIComponent(normalized)}`,
+        {
+          cache: "no-store",
+        }
+      );
       const j = await r.json();
       if (r.ok && j.exists) {
-        localStorage.setItem(PHONE_KEY, p);
+        localStorage.setItem(PHONE_KEY, normalized);
         setOpen(false);
-        onAuthed(p, Number(j.balance ?? 0));
+        onAuthed(normalized, Number(j.balance ?? 0));
+
+        // ★ 購入画面へ即反映（BroadcastChannel で通知）
+        new BroadcastChannel("thiha-shop").postMessage({
+          type: "LOGIN_SUCCESS",
+          phone: normalized,
+        });
       } else {
         setError(
           "入力された電話番号は登録されていません。新規登録してください。"
@@ -118,17 +149,21 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
 
   async function doRegister() {
     setError(null);
-    const p = phone.trim();
-    if (!isValidPhone(p)) {
-      setError("電話番号を正しく入力してください");
+
+    const normalized = normalizeToDomestic(phone);
+    if (!normalized) {
+      setError(
+        "「09」で始まる数字のみ、合計8〜11桁で入力してください（例: 09000000000）"
+      );
       return;
     }
+
     setLoading(true);
     try {
       const r = await fetch(`/api/auth/register`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ phone: p }),
+        body: JSON.stringify({ phone: normalized }),
       });
       const j: any = await r.json().catch(() => ({}));
 
@@ -137,9 +172,15 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
         r.ok && (j?.ok === true || typeof j?.created !== "undefined");
 
       if (isOk) {
-        localStorage.setItem(PHONE_KEY, p);
+        localStorage.setItem(PHONE_KEY, normalized);
         setOpen(false);
-        onAuthed(p, Number(j?.balance ?? 0));
+        onAuthed(normalized, Number(j?.balance ?? 0));
+
+        // ★ 購入画面へ即反映（BroadcastChannel で通知）
+        new BroadcastChannel("thiha-shop").postMessage({
+          type: "LOGIN_SUCCESS",
+          phone: normalized,
+        });
       } else {
         setError(j?.error || j?.message || "登録に失敗しました");
       }
@@ -170,6 +211,7 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
               {flash}
             </div>
           )}
+
           {mode === "home" && (
             <div className="grid grid-cols-2 gap-3">
               <Button className="h-11" onClick={() => setMode("login")}>
@@ -188,17 +230,33 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
           {mode !== "home" && (
             <>
               <div className="space-y-1">
-                <label className="text-sm font-medium">電話番号（必須）</label>
+                <label htmlFor="phone" className="text-sm font-medium">
+                  電話番号（必須）
+                </label>
                 <input
+                  id="phone"
                   required
-                  inputMode="tel"
-                  placeholder="例: 08012345678"
+                  inputMode="numeric"
+                  // ブラウザの軽いチェックも併用（JS 側の isValidPhone が主）
+                  pattern="^09\d{6,9}$"
+                  title="「09」で始まる数字のみ、合計8〜11桁で入力してください（例: 09000000000）"
+                  placeholder="例: 09000000000"
                   className="w-full rounded-md border px-3 py-2 outline-none focus:border-gray-400"
+                  aria-describedby="phoneHelp"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   disabled={loading}
                 />
+                <p
+                  id="phoneHelp"
+                  className="text-xs text-muted-foreground mt-1"
+                >
+                  「09」で始まる<strong>数字のみ</strong>、
+                  <strong>合計8〜11桁</strong>で入力してください（例:
+                  09000000000）。
+                </p>
               </div>
+
               {error && <p className="text-sm text-red-600">{error}</p>}
 
               <div className="flex gap-2">
@@ -218,9 +276,7 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
                   variant="outline"
                   onClick={() => {
                     setMode("home");
-                    setError(
-                      null
-                    ); /* flashは残してもOK。消したいなら setFlash(null) */
+                    setError(null); // flashは残してもOK。消したいなら setFlash(null)
                   }}
                 >
                   戻る
