@@ -66,6 +66,7 @@ export default function AdminPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
 
   // 商品は immutable
   const {
@@ -242,6 +243,8 @@ export default function AdminPage() {
   // 追加
   const handleAddProduct = async () => {
     if (!newProduct.name || !newProduct.price) return;
+    if (isAdding) return; // ← 二重実行ガード
+    setIsAdding(true);
     try {
       const response = await fetch("/api/products", {
         method: "POST",
@@ -263,6 +266,8 @@ export default function AdminPage() {
       console.error("Product addition failed:", error);
       setNotification("商品の追加に失敗しました");
       setTimeout(() => setNotification(""), 3000);
+    } finally {
+      +setIsAdding(false); // ← 必ず解除
     }
   };
 
@@ -457,9 +462,19 @@ export default function AdminPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg font-black">商品管理</CardTitle>
-                <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+                <Dialog
+                  open={isAddOpen}
+                  onOpenChange={(open) => {
+                    if (isAdding) return; // 送信中は閉じさせない
+                    setIsAddOpen(open);
+                  }}
+                >
                   <DialogTrigger asChild>
-                    <Button size="sm" onClick={() => setIsAddOpen(true)}>
+                    <Button
+                      size="sm"
+                      onClick={() => setIsAddOpen(true)}
+                      disabled={isAdding}
+                    >
                       <Plus className="w-4 h-4 mr-1" />
                       商品追加
                     </Button>
@@ -480,6 +495,7 @@ export default function AdminPage() {
                               name: e.target.value,
                             }))
                           }
+                          disabled={isAdding}
                         />
                       </div>
                       <div>
@@ -494,10 +510,16 @@ export default function AdminPage() {
                               price: e.target.value,
                             }))
                           }
+                          disabled={isAdding}
                         />
                       </div>
-                      <Button onClick={handleAddProduct} className="w-full">
-                        追加
+                      <Button
+                        onClick={handleAddProduct}
+                        className="w-full"
+                        disabled={isAdding}
+                        aria-busy={isAdding}
+                      >
+                        {isAdding ? "追加中…" : "追加"}
                       </Button>
                     </div>
                   </DialogContent>
