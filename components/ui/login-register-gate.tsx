@@ -59,17 +59,7 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
         phone: saved,
       });
 
-      // ★ 裏で最新残高だけ取得（UIはブロックしない）
-      apiFetch(`/api/balance?phone=${encodeURIComponent(saved)}`, {
-        cache: "no-store",
-        lockUI: false,
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((j) => {
-          if (j && typeof j.balance === "number")
-            onAuthedRef.current(saved, j.balance);
-        })
-        .catch(() => {});
+      // 残高は各画面の SWR が取得・共有するためここでは追加リクエストしない
     } else {
       setOpen(true);
     }

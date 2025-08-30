@@ -49,10 +49,14 @@ function BalanceCell({ phone }: { phone: string }) {
   const key = normalized
     ? `/api/balance?phone=${encodeURIComponent(normalized)}`
     : null;
-  const { data } = useSWR(key, (u) => apiFetch(u!, { lockUI: false }).then((r) => r.json()), {
-    revalidateOnFocus: true,
-    dedupingInterval: 4000,
-  });
+  const { data } = useSWR(
+    key,
+    (u) => apiFetch(u!, { lockUI: false }).then((r) => r.json()),
+    {
+      revalidateOnFocus: true,
+      dedupingInterval: 4000,
+    }
+  );
   const bal = data?.exists ? Number(data.balance) : 0;
   return <>¥{(Number.isFinite(bal) ? bal : 0).toLocaleString()}</>;
 }

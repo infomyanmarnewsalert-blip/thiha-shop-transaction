@@ -168,6 +168,27 @@ export default function PurchasePage() {
     }));
   }, [productsRaw]);
 
+  // 残高変更のリアルタイム反映（管理側承認など）
+  useEffect(() => {
+    const bc = new BroadcastChannel("thiha-shop");
+    const onMsg = (e: MessageEvent<any>) => {
+      const msg = e.data || {};
+      if (!balanceKey) return;
+      if (msg.type === "BALANCE_CHANGED_ALL") {
+        mutate(balanceKey);
+        return;
+      }
+      if (msg.type === "BALANCE_CHANGED") {
+        const m = String(msg.phone || "").replace(/\D/g, "");
+        if (!normalizedPhone || m === normalizedPhone) {
+          mutate(balanceKey);
+        }
+      }
+    };
+    bc.addEventListener("message", onMsg);
+    return () => bc.removeEventListener("message", onMsg);
+  }, [mutate, balanceKey, normalizedPhone]);
+
   // ====== 修正点：検索対象のフィルタリング ======
   const filteredProducts = useMemo(() => {
     if (!searchQuery.trim()) return products;
