@@ -200,6 +200,29 @@ export default function PurchasePage() {
   }, [products, searchQuery]);
   // ====== /修正点 ======
 
+  // 検索条件変更時：選択中の商品が結果に存在しなければ選択を解除（追加モードのみ）
+  useEffect(() => {
+    if (editingProductId) return; // 編集モードは対象外（検索UIなし）
+    if (!selectedProductInModal) return;
+    const exists = filteredProducts.some(
+      (p) => p.id === selectedProductInModal.id
+    );
+    if (!exists) {
+      setSelectedProductInModal(null);
+      setQuantityInModal(1);
+    }
+  }, [editingProductId, selectedProductInModal, filteredProducts]);
+
+  // 検索語がクリアされたら（追加モード時）初期状態に戻す
+  useEffect(() => {
+    if (!showProductModal) return;
+    if (editingProductId) return; // 編集モードは対象外
+    if (searchQuery.trim() !== "") return;
+    if (!selectedProductInModal) return;
+    setSelectedProductInModal(null);
+    setQuantityInModal(1);
+  }, [showProductModal, editingProductId, searchQuery, selectedProductInModal]);
+
   // ====== 修正点：モーダルの開閉・編集開始・確定・削除 ======
   const openProductModal = (editId?: string) => {
     if (editId) {
