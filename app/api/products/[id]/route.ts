@@ -49,13 +49,9 @@ export async function PUT(
 // DELETE /api/products/:id
 export async function DELETE(
   _req: Request,
-  ctx: { params: { id?: string[] } }
+  { params }: { params: { id: string } }
 ) {
-  const segs = ctx.params.id ?? [];
-  if (segs.length !== 1)
-    return json({ success: false, error: "Method Not Allowed" }, 405);
-
-  const id = Number(segs[0]);
+  const id = Number(params.id);
   if (!Number.isInteger(id))
     return json({ success: false, error: "invalid id" }, 400);
 
