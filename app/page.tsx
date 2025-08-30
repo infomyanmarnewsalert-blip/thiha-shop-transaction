@@ -601,8 +601,8 @@ export default function PurchasePage() {
         {/* ✅ 修正点：商品選択モーダル本体 */}
         <Dialog open={showProductModal} onOpenChange={closeProductModal}>
           <DialogContent
-            className="max-w-md w-[calc(100%-24px)] max-h-[80vh] overflow-hidden flex flex-col
-              !left-1/2 !top-[25%] !-translate-x-1/2 !-translate-y-1/2"
+            className="max-w-md w-[calc(100%-24px)] max-h-[80vh] overflow-y-auto flex flex-col
+              !left-1/2 !top-[35%] !-translate-x-1/2"
           >
             <DialogHeader>
               <DialogTitle>
@@ -610,7 +610,7 @@ export default function PurchasePage() {
               </DialogTitle>
             </DialogHeader>
 
-            <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+            <div className="space-y-4 flex-1 flex flex-col">
               {/* 追加 or 編集で分岐 */}
               {editingProductId ? (
                 /* ====== 編集モード：検索UIは出さず、商品名を表示してQtyのみ変更 ====== */
@@ -691,29 +691,81 @@ export default function PurchasePage() {
                     />
                   </div>
 
-                  {/* 商品リスト：選択後は選択中の商品だけを表示 */}
-                  <div className="flex-1 overflow-y-auto space-y-2 max-h-[200px]">
+                  {/* 商品リスト：選択後は選択中の商品だけを表示。高さは一定に保つ */}
+                  <div className="h-[240px] space-y-2">
                     {selectedProductInModal ? (
-                      <div className="w-full p-3 rounded-lg border bg-primary/5">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="space-y-1 min-w-0">
-                            <p className="font-medium break-words leading-tight">
-                              {selectedProductInModal.name}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {selectedProductInModal.price.toLocaleString()}ks
-                            </p>
+                      <>
+                        <div className="w-full p-3 rounded-lg border bg-primary/5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1 min-w-0">
+                              <p className="font-medium break-words leading-tight">
+                                {selectedProductInModal.name}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {selectedProductInModal.price.toLocaleString()}
+                                ks
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedProductInModal(null)}
+                              className="shrink-0 h-8"
+                            >
+                              Change
+                            </Button>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setSelectedProductInModal(null)}
-                            className="shrink-0 h-8"
-                          >
-                            Change
-                          </Button>
                         </div>
-                      </div>
+
+                        {/* Qty 選択を同じスクロール領域内に含めて高さを一定に保つ */}
+                        <div className="space-y-3 border-t pt-4">
+                          <div>
+                            <label className="text-sm font-medium">Qty</label>
+                            <div className="flex items-center gap-3 mt-2">
+                              <Button
+                                aria-label="Decrease quantity"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setQuantityInModal(
+                                    Math.max(1, quantityInModal - 1)
+                                  )
+                                }
+                                className="h-11 w-11 p-0 text-xl"
+                              >
+                                -
+                              </Button>
+                              <span className="font-semibold min-w-[2rem] text-center">
+                                {quantityInModal}
+                              </span>
+                              <Button
+                                aria-label="Increase quantity"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setQuantityInModal(quantityInModal + 1)
+                                }
+                                className="h-11 w-11 p-0 text-xl"
+                              >
+                                +
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="bg-muted p-3 rounded-lg">
+                            <div className="flex justify-between">
+                              <span className="text-sm">Subtotal</span>
+                              <span className="font-semibold">
+                                {Number(
+                                  (selectedProductInModal?.price ?? 0) *
+                                    quantityInModal
+                                ).toLocaleString()}
+                                ks
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </>
                     ) : searchQuery.trim() === "" ? (
                       <p className="text-center text-muted-foreground py-4">
                         Type to search.
@@ -744,56 +796,7 @@ export default function PurchasePage() {
                     )}
                   </div>
 
-                  {/* Qty選択（商品が選ばれている時だけ表示） */}
-                  {selectedProductInModal && (
-                    <div className="space-y-3 border-t pt-4">
-                      <div>
-                        <label className="text-sm font-medium">Qty</label>
-                        <div className="flex items-center gap-3 mt-2">
-                          <Button
-                            aria-label="Decrease quantity"
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              setQuantityInModal(
-                                Math.max(1, quantityInModal - 1)
-                              )
-                            }
-                            className="h-11 w-11 p-0 text-xl"
-                          >
-                            -
-                          </Button>
-                          <span className="font-semibold min-w-[2rem] text-center">
-                            {quantityInModal}
-                          </span>
-                          <Button
-                            aria-label="Increase quantity"
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              setQuantityInModal(quantityInModal + 1)
-                            }
-                            className="h-11 w-11 p-0 text-xl"
-                          >
-                            +
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="bg-muted p-3 rounded-lg">
-                        <div className="flex justify-between">
-                          <span className="text-sm">Subtotal</span>
-                          <span className="font-semibold">
-                            {Number(
-                              (selectedProductInModal?.price ?? 0) *
-                                quantityInModal
-                            ).toLocaleString()}
-                            ks
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  {/* Qtyは上の固定高さ枠内に含めたためここでは描画しない */}
                 </>
               )}
 
