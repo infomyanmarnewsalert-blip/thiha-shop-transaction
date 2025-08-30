@@ -192,7 +192,7 @@ export default function PurchasePage() {
   }, [mutate, balanceKey, normalizedPhone]);
 
   // ====== 修正点：検索対象のフィルタリング ======
-  const filteredProducts = useMemo(() => {
+  const filteredProducts: Product[] = useMemo(() => {
     if (!searchQuery.trim()) return products;
     return products.filter((product) =>
       product.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -602,7 +602,7 @@ export default function PurchasePage() {
         <Dialog open={showProductModal} onOpenChange={closeProductModal}>
           <DialogContent
             className="max-w-md w-[calc(100%-24px)] max-h-[80vh] overflow-hidden flex flex-col
-              !left-1/2 !top-1/2 !-translate-x-1/2 !-translate-y-1/2"
+              !left-1/2 !top-[25%] !-translate-x-1/2 !-translate-y-1/2"
           >
             <DialogHeader>
               <DialogTitle>
@@ -636,12 +636,13 @@ export default function PurchasePage() {
                       <label className="text-sm font-medium">Qty</label>
                       <div className="flex items-center gap-3 mt-2">
                         <Button
+                          aria-label="Decrease quantity"
                           variant="outline"
                           size="sm"
                           onClick={() =>
                             setQuantityInModal(Math.max(1, quantityInModal - 1))
                           }
-                          className="h-8 w-8 p-0"
+                          className="h-11 w-11 p-0 text-xl"
                         >
                           -
                         </Button>
@@ -649,12 +650,13 @@ export default function PurchasePage() {
                           {quantityInModal}
                         </span>
                         <Button
+                          aria-label="Increase quantity"
                           variant="outline"
                           size="sm"
                           onClick={() =>
                             setQuantityInModal(quantityInModal + 1)
                           }
-                          className="h-8 w-8 p-0"
+                          className="h-11 w-11 p-0 text-xl"
                         >
                           +
                         </Button>
@@ -689,22 +691,41 @@ export default function PurchasePage() {
                     />
                   </div>
 
-                  {/* 商品リスト：検索入力があるときだけ表示 */}
+                  {/* 商品リスト：選択後は選択中の商品だけを表示 */}
                   <div className="flex-1 overflow-y-auto space-y-2 max-h-[200px]">
-                    {searchQuery.trim() === "" ? (
+                    {selectedProductInModal ? (
+                      <div className="w-full p-3 rounded-lg border bg-primary/5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1 min-w-0">
+                            <p className="font-medium break-words leading-tight">
+                              {selectedProductInModal.name}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {selectedProductInModal.price.toLocaleString()}ks
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedProductInModal(null)}
+                            className="shrink-0 h-8"
+                          >
+                            Change
+                          </Button>
+                        </div>
+                      </div>
+                    ) : searchQuery.trim() === "" ? (
                       <p className="text-center text-muted-foreground py-4">
                         Type to search.
                       </p>
                     ) : filteredProducts.length > 0 ? (
-                      filteredProducts.map((product) => (
+                      filteredProducts.map((product: Product) => (
                         <button
                           key={product.id}
                           onClick={() => handleProductSelect(product)}
-                          className={`w-full p-3 text-left rounded-lg border transition-colors ${
-                            selectedProductInModal?.id === product.id
-                              ? "border-primary bg-primary/10"
-                              : "border-border hover:border-primary/50 hover:bg-muted"
-                          }`}
+                          className={
+                            "w-full p-3 text-left rounded-lg border transition-colors border-border hover:border-primary/50 hover:bg-muted"
+                          }
                         >
                           <div className="space-y-1">
                             <p className="font-medium break-words leading-tight">
@@ -730,6 +751,7 @@ export default function PurchasePage() {
                         <label className="text-sm font-medium">Qty</label>
                         <div className="flex items-center gap-3 mt-2">
                           <Button
+                            aria-label="Decrease quantity"
                             variant="outline"
                             size="sm"
                             onClick={() =>
@@ -737,7 +759,7 @@ export default function PurchasePage() {
                                 Math.max(1, quantityInModal - 1)
                               )
                             }
-                            className="h-8 w-8 p-0"
+                            className="h-11 w-11 p-0 text-xl"
                           >
                             -
                           </Button>
@@ -745,12 +767,13 @@ export default function PurchasePage() {
                             {quantityInModal}
                           </span>
                           <Button
+                            aria-label="Increase quantity"
                             variant="outline"
                             size="sm"
                             onClick={() =>
                               setQuantityInModal(quantityInModal + 1)
                             }
-                            className="h-8 w-8 p-0"
+                            className="h-11 w-11 p-0 text-xl"
                           >
                             +
                           </Button>
