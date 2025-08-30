@@ -12,6 +12,7 @@ import { getSavedPhone } from "@/lib/client-auth";
 // ✅ 追加：確認モーダル
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { apiFetch } from "@/lib/api";
+import { formatYGNMinute } from "@/lib/utils";
 
 const PRESETS = [1000, 3000, 5000, 10000];
 
@@ -62,7 +63,7 @@ export default function ChargePage() {
       setRequestData({
         phoneLastFour: phone.slice(-4),
         amount,
-        timestamp: new Date().toLocaleString("ja-JP"),
+        timestamp: formatYGNMinute(new Date()),
         status: "pending",
         requestId: requestIdStr,
       });

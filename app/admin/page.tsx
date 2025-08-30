@@ -29,6 +29,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { formatYGNMinute } from "@/lib/utils";
 
 type AdminChargeRequest = {
   id: string;
@@ -283,7 +284,7 @@ export default function AdminPage() {
       setNotification("商品の追加に失敗しました");
       setTimeout(() => setNotification(""), 3000);
     } finally {
-      +setIsAdding(false); // ← 必ず解除
+      setIsAdding(false); // ← 必ず解除
     }
   };
 
@@ -291,7 +292,8 @@ export default function AdminPage() {
     product.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
   const pendingRequests = requests.filter((req) => !req.approved);
-  const processedRequests = requests.filter((req) => req.approved);
+  // 処理済みタブでは API(status=all) の全件を表示する
+  const processedRequests = requests;
 
   return (
     <div className="min-h-screen bg-background">
@@ -349,10 +351,10 @@ export default function AdminPage() {
             </CardHeader>
 
             {/* ヘッダーを除いた残りの高さを占有。ここでは overflow は隠す */}
-            <CardContent className="flex-1 flex flex-col overflow-hidden">
+            <CardContent className="flex-1 flex flex-col overflow-hidden min-h-0">
               <Tabs
                 defaultValue="pending"
-                className="flex-1 flex flex-col w-full"
+                className="flex-1 flex flex-col w-full min-h-0"
               >
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="pending">
@@ -364,14 +366,17 @@ export default function AdminPage() {
                 {/* 承認待ち：タブの中で “だけ” スクロール */}
                 <TabsContent
                   value="pending"
-                  className="flex-1 overflow-hidden mt-6"
+                  className="flex-1 flex flex-col overflow-hidden mt-6 min-h-0"
                 >
                   {pendingRequests.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       承認待ちのリクエストはありません
                     </div>
                   ) : (
-                    <div className="h-full overflow-y-auto pr-2 -mr-2">
+                    <div
+                      className="flex-1 overflow-y-auto pr-2"
+                      style={{ scrollbarGutter: "stable both-edges" }}
+                    >
                       <div className="grid grid-cols-1 gap-4">
                         {pendingRequests.map((request) => (
                           <Card
@@ -399,7 +404,7 @@ export default function AdminPage() {
                                     <BalanceCell phone={request.phone} initial={request.currentBalance} />
                                   </div>
                                   <div className="text-xs text-muted-foreground">
-                                    {request.requested_at}
+                                    {formatYGNMinute(request.requested_at)}
                                   </div>
                                 </div>
                                 <Button
@@ -423,14 +428,17 @@ export default function AdminPage() {
                 {/* 処理済み：同じくタブ内スクロール */}
                 <TabsContent
                   value="processed"
-                  className="flex-1 overflow-hidden mt-6"
+                  className="flex-1 flex flex-col overflow-hidden mt-6 min-h-0"
                 >
                   {processedRequests.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       処理済みのリクエストはありません
                     </div>
                   ) : (
-                    <div className="h-full overflow-y-auto pr-2 -mr-2">
+                    <div
+                      className="flex-1 overflow-y-auto pr-2"
+                      style={{ scrollbarGutter: "stable both-edges" }}
+                    >
                       <div className="grid grid-cols-1 gap-4">
                         {processedRequests.map((request) => (
                           <Card key={request.id}>
@@ -441,12 +449,21 @@ export default function AdminPage() {
                                     <span className="font-semibold">
                                       {request.phone}
                                     </span>
-                                    <Badge
-                                      variant="secondary"
-                                      className="bg-green-100 text-green-800"
-                                    >
-                                      承認済み
-                                    </Badge>
+                                    {request.approved ? (
+                                      <Badge
+                                        variant="secondary"
+                                        className="bg-green-100 text-green-800"
+                                      >
+                                        承認済み
+                                      </Badge>
+                                    ) : (
+                                      <Badge
+                                        variant="secondary"
+                                        className="bg-primary/10 text-primary"
+                                      >
+                                        承認待ち
+                                      </Badge>
+                                    )}
                                   </div>
                                   <div className="text-sm text-muted-foreground">
                                     チャージ額: ¥
@@ -455,8 +472,8 @@ export default function AdminPage() {
                                     <BalanceCell phone={request.phone} initial={request.currentBalance} />
                                   </div>
                                   <div className="text-xs text-muted-foreground">
-                                    リクエスト: {request.requested_at} | 承認:{" "}
-                                    {request.approved_at}
+                                    リクエスト: {formatYGNMinute(request.requested_at)} {" "}|{" "}
+                                    承認: {request.approved ? formatYGNMinute(request.approved_at) : "-"}
                                   </div>
                                 </div>
                               </div>

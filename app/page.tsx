@@ -26,6 +26,7 @@ import { getSavedPhone } from "@/lib/client-auth";
 import useSWR, { useSWRConfig } from "swr";
 import { fetcher } from "@/lib/fetcher";
 import { apiFetch } from "@/lib/api";
+import { formatYGNMinute } from "@/lib/utils";
 import BalanceGuard from "@/components/ui/BalanceGuard";
 // ✅ 購入前の確認モーダルはそのまま維持（修正点の対象外）
 import ConfirmModal from "@/components/ui/ConfirmModal";
@@ -327,7 +328,7 @@ export default function PurchasePage() {
         setPurchaseData({
           products: selectedList,
           totalPrice,
-          timestamp: new Date().toLocaleString(),
+          timestamp: formatYGNMinute(new Date()),
           remainingBalance: newBal,
         });
         setShowReceipt(true);

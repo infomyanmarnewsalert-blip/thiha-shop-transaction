@@ -17,7 +17,8 @@ export async function GET(req: Request) {
     let query = supabase
       .from("ChargeRequests")
       .select("*, Users(phone_number,balance,last_charge_date)")
-      .order("requested_at", { ascending: true });
+      // 新しい順で上に来るように並べる
+      .order("requested_at", { ascending: false, nullsFirst: false });
     if (status === "pending") query = query.eq("approved", false);
     if (status === "approved") query = query.eq("approved", true);
     const { data, error } = await query;
