@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { AuthGateMode } from "@/lib/auth-gate";
+import { apiFetch } from "@/lib/api";
 
 type Props = {
   onAuthed: (phone: string, balance: number) => void;
@@ -59,8 +60,9 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
       });
 
       // ★ 裏で最新残高だけ取得（UIはブロックしない）
-      fetch(`/api/balance?phone=${encodeURIComponent(saved)}`, {
+      apiFetch(`/api/balance?phone=${encodeURIComponent(saved)}`, {
         cache: "no-store",
+        lockUI: false,
       })
         .then((r) => (r.ok ? r.json() : null))
         .then((j) => {
@@ -91,9 +93,13 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
 
   async function autoLogin(p: string) {
     try {
-      const r = await fetch(`/api/auth/check?phone=${encodeURIComponent(p)}`, {
-        cache: "no-store",
-      });
+      const r = await apiFetch(
+        `/api/auth/check?phone=${encodeURIComponent(p)}`,
+        {
+          cache: "no-store",
+          lockUI: false,
+        }
+      );
       const j = await r.json();
       if (r.ok && j.exists) {
         setOpen(false);
@@ -118,10 +124,11 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
     setLoading(true);
     try {
       // ★ 送信も保存も正規化した 09... を使用
-      const r = await fetch(
+      const r = await apiFetch(
         `/api/auth/check?phone=${encodeURIComponent(normalized)}`,
         {
           cache: "no-store",
+          lockUI: false,
         }
       );
       const j = await r.json();
@@ -160,7 +167,7 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
 
     setLoading(true);
     try {
-      const r = await fetch(`/api/auth/register`, {
+      const r = await apiFetch(`/api/auth/register`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ phone: normalized }),

@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { getSavedPhone } from "@/lib/client-auth";
 // ✅ 追加：確認モーダル
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import { apiFetch } from "@/lib/api";
 
 const PRESETS = [1000, 3000, 5000, 10000];
 
@@ -41,7 +42,7 @@ export default function ChargePage() {
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch("/api/charge-requests", {
+      const res = await apiFetch("/api/charge-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, amount }),

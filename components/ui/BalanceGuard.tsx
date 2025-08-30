@@ -4,9 +4,10 @@
 import * as React from "react";
 import useSWR from "swr";
 import LoginRegisterGate from "@/components/ui/login-register-gate";
+import { apiFetch } from "@/lib/api";
 
 const fetcher = async (u: string) => {
-  const res = await fetch(u);
+  const res = await apiFetch(u, { lockUI: false });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json?.error || res.statusText);
   return json;

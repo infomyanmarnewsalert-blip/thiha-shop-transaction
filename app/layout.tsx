@@ -1,6 +1,7 @@
 import type React from "react"
 import { Montserrat, Open_Sans } from "next/font/google"
 import "./globals.css"
+import GlobalLoadingOverlay from "@/components/GlobalLoadingOverlay";
 
 const montserrat = Montserrat({
   subsets: ["latin"],
@@ -23,7 +24,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja" className={`${montserrat.variable} ${openSans.variable} antialiased`}>
-      <body className="font-sans">{children}</body>
+      <body className="font-sans">
+        {children}
+        <GlobalLoadingOverlay />
+      </body>
     </html>
   )
 }

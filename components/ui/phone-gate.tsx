@@ -39,9 +39,12 @@ export default function PhoneGate({
   async function fetchOnce(p: string) {
     try {
       setLoading(true);
-      const res = await fetch(`/api/balance?phone=${encodeURIComponent(p)}`, {
-        cache: "no-store",
-      });
+      const res = await import("@/lib/api").then(({ apiFetch }) =>
+        apiFetch(`/api/balance?phone=${encodeURIComponent(p)}`, {
+          cache: "no-store",
+          lockUI: false,
+        })
+      );
       if (!res.ok) throw new Error(String(res.status));
       const json = await res.json();
       localStorage.setItem(PHONE_KEY, p);

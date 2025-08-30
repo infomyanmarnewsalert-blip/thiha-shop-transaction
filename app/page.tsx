@@ -25,6 +25,7 @@ import Link from "next/link";
 import { getSavedPhone } from "@/lib/client-auth";
 import useSWR, { useSWRConfig } from "swr";
 import { fetcher } from "@/lib/fetcher";
+import { apiFetch } from "@/lib/api";
 import BalanceGuard from "@/components/ui/BalanceGuard";
 // ✅ 購入前の確認モーダルはそのまま維持（修正点の対象外）
 import ConfirmModal from "@/components/ui/ConfirmModal";
@@ -267,7 +268,7 @@ export default function PurchasePage() {
       return;
     }
     try {
-      const response = await fetch("/api/purchase", {
+      const response = await apiFetch("/api/purchase", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

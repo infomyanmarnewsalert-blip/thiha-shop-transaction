@@ -2,8 +2,7 @@
 
 import useSWR from "swr";
 import { getSavedPhone } from "@/lib/client-auth";
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+import { fetcher } from "@/lib/fetcher";
 
 export default function BalanceCard() {
   const phone = getSavedPhone(); // ローカルストレージから

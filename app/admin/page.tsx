@@ -4,6 +4,7 @@ import useSWR, { useSWRConfig } from "swr";
 import useSWRImmutable from "swr/immutable";
 import { useState, useEffect } from "react";
 import { fetcher } from "@/lib/fetcher";
+import { apiFetch } from "@/lib/api";
 import {
   CreditCard,
   Package,
@@ -48,7 +49,7 @@ function BalanceCell({ phone }: { phone: string }) {
   const key = normalized
     ? `/api/balance?phone=${encodeURIComponent(normalized)}`
     : null;
-  const { data } = useSWR(key, (u) => fetch(u!).then((r) => r.json()), {
+  const { data } = useSWR(key, (u) => apiFetch(u!, { lockUI: false }).then((r) => r.json()), {
     revalidateOnFocus: true,
     dedupingInterval: 4000,
   });
@@ -141,7 +142,7 @@ export default function AdminPage() {
   const handleApprove = async (req: AdminChargeRequest) => {
     setIsLoading(true);
     try {
-      const response = await fetch("/api/charge-requests", {
+      const response = await apiFetch("/api/charge-requests", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: req.id }),
@@ -186,7 +187,7 @@ export default function AdminPage() {
   // 編集
   const handleEditProduct = async (product: any) => {
     try {
-      const response = await fetch(`/api/products/${product.id}`, {
+      const response = await apiFetch(`/api/products/${product.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: product.name, price: product.price }),
@@ -222,7 +223,7 @@ export default function AdminPage() {
     if (!ok) return;
 
     try {
-      const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/products/${id}`, { method: "DELETE" });
       const result = await res.json().catch(() => ({}));
       if (res.ok && result?.success !== false) {
         await refetchProducts();
@@ -246,7 +247,7 @@ export default function AdminPage() {
     if (isAdding) return; // ← 二重実行ガード
     setIsAdding(true);
     try {
-      const response = await fetch("/api/products", {
+      const response = await apiFetch("/api/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
