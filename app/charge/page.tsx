@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { getSavedPhone } from "@/lib/client-auth";
+// ✅ 追加：確認モーダル
+import ConfirmModal from "@/components/ui/ConfirmModal";
 
 const PRESETS = [1000, 3000, 5000, 10000];
 
@@ -27,6 +29,8 @@ export default function ChargePage() {
   const [error, setError] = useState("");
   const [showProof, setShowProof] = useState(false);
   const [requestData, setRequestData] = useState<ProofData | null>(null);
+  // ✅ 追加：確認モーダルの開閉
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     setPhone(getSavedPhone() ?? null);
@@ -211,8 +215,9 @@ export default function ChargePage() {
                 </Alert>
               )}
 
+              {/* ✅ 変更：送信ボタンは即POSTせずモーダルを開く */}
               <Button
-                onClick={handleSubmit}
+                onClick={() => setConfirmOpen(true)}
                 disabled={!phone || !amount || submitting}
                 aria-busy={submitting}
                 className="w-full h-12 text-lg font-semibold"
@@ -226,6 +231,33 @@ export default function ChargePage() {
                   </>
                 )}
               </Button>
+
+              {/* ✅ 追加：チャージ前確認モーダル（電話番号はマスクしない） */}
+              <ConfirmModal
+                open={confirmOpen}
+                onOpenChange={setConfirmOpen}
+                title="チャージリクエストの確認"
+                description="以下の内容でチャージリクエストを送信します。よろしければ「チャージ確定」を押してください。"
+                confirmLabel="チャージ確定"
+                cancelLabel="戻る"
+                onConfirm={async () => {
+                  setConfirmOpen(false);
+                  await handleSubmit();
+                }}
+              >
+                <div className="rounded-md border p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">電話番号</span>
+                    <span className="font-semibold">{phone ?? "未設定"}</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-sm">チャージ金額</span>
+                    <span className="text-lg font-bold">
+                      {amount ? `¥${amount.toLocaleString()}` : "未選択"}
+                    </span>
+                  </div>
+                </div>
+              </ConfirmModal>
 
               <Link href="/" className="block">
                 <Button variant="outline" className="w-full bg-transparent">

@@ -1,25 +1,35 @@
 /* app/page.tsx */
 "use client";
 
-import { ShoppingCart, Wallet, CreditCard, Plus, X } from "lucide-react";
+import {
+  ShoppingCart,
+  Wallet,
+  CreditCard,
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { getSavedPhone } from "@/lib/client-auth";
 import useSWR, { useSWRConfig } from "swr";
 import { fetcher } from "@/lib/fetcher";
 import BalanceGuard from "@/components/ui/BalanceGuard";
+// ✅ 購入前の確認モーダルはそのまま維持（修正点の対象外）
+import ConfirmModal from "@/components/ui/ConfirmModal";
 
-// ✅ 追加：ブラウザ用 Supabase クライアントをこのファイル内で作成
+// ブラウザ用 Supabase クライアント
 import { createClient } from "@supabase/supabase-js";
 const supabaseBrowser = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL as string,
@@ -27,31 +37,42 @@ const supabaseBrowser = createClient(
 );
 
 type Product = { id: number; name: string; price: number };
+// ✅ 修正点：選択済みは product オブジェクト＋数量で保持（編集/削除しやすく）
+type SelectedProduct = { id: string; product: Product; quantity: number };
 
 export default function PurchasePage() {
   const { mutate } = useSWRConfig();
-  const [selectedProducts, setSelectedProducts] = useState<
-    Array<{ id: string; productId: number | null }>
-  >([{ id: "1", productId: null }]);
+
+  // ====== 修正点：モーダル方式のための state 追加 ======
+  const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>(
+    []
+  );
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedProductInModal, setSelectedProductInModal] =
+    useState<Product | null>(null);
+  const [quantityInModal, setQuantityInModal] = useState(1);
+  // ====== /修正点 ======
+
   const [balance, setBalance] = useState(0);
   const [showReceipt, setShowReceipt] = useState(false);
   const [purchaseData, setPurchaseData] = useState<any>(null);
   const [phone, setPhone] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // 電話番号は state に保持（BalanceGuard がゲート表示を担当）
   useEffect(() => {
     setPhone(getSavedPhone() ?? null);
   }, []);
 
-  // ★ 追加1：BroadcastChannel でログイン完了を検知（BalanceGuard 側で通知を送る）
+  // BroadcastChannel でログイン完了を検知
   useEffect(() => {
     const bc = new BroadcastChannel("thiha-shop");
     const onMsg = (e: MessageEvent<any>) => {
       const msg = e.data || {};
       if (msg.type === "LOGIN_SUCCESS" || msg.type === "PHONE_SAVED") {
-        // payload に phone があればそれを、なければ getSavedPhone() で再取得
         const ph = msg.phone ?? getSavedPhone() ?? null;
-        // 変更がないなら何もしない（無駄な再フェッチを防ぐ）
         setPhone((prev) => (prev === ph ? prev : ph));
       }
     };
@@ -59,7 +80,7 @@ export default function PurchasePage() {
     return () => bc.removeEventListener("message", onMsg);
   }, []);
 
-  // /api/balance の SWR キーを共通化
+  // /api/balance の SWR キー
   const normalizedPhone = useMemo(
     () => (phone ? phone.replace(/\D/g, "") : null),
     [phone]
@@ -72,7 +93,7 @@ export default function PurchasePage() {
     [normalizedPhone]
   );
 
-  // ★ ログイン直後に /api/balance を即時取り直す
+  // ログイン直後に /api/balance を即時取り直す
   useEffect(() => {
     if (!balanceKey) return;
     mutate(balanceKey);
@@ -97,7 +118,7 @@ export default function PurchasePage() {
     }
   }, [balanceSnap, balance]);
 
-  // ✅ /api/products を1本の useSWR で管理（バインド版 mutate も取得）
+  // /api/products
   const {
     data: productsRaw,
     isLoading: loadingProducts,
@@ -108,7 +129,7 @@ export default function PurchasePage() {
     dedupingInterval: 3000,
   });
 
-  // ✅ Supabase Realtime 購読（ブラウザ用クライアントで）
+  // Supabase Realtime
   useEffect(() => {
     const ch = supabaseBrowser
       .channel("products-realtime")
@@ -134,7 +155,7 @@ export default function PurchasePage() {
     return () => bc.removeEventListener("message", onMsg);
   }, [revalidateProducts]);
 
-  // API が [] でも {items: []} でも動くように正規化
+  // API 正規化
   const products: Product[] = useMemo(() => {
     const list = Array.isArray(productsRaw)
       ? productsRaw
@@ -146,54 +167,91 @@ export default function PurchasePage() {
     }));
   }, [productsRaw]);
 
-  const addProductDropdown = () => {
-    const newId = Date.now().toString();
-    setSelectedProducts((prev) => [...prev, { id: newId, productId: null }]);
-  };
-
-  const removeProductDropdown = (id: string) => {
-    if (selectedProducts.length > 1) {
-      setSelectedProducts((prev) => prev.filter((item) => item.id !== id));
-    }
-  };
-
-  const updateSelectedProduct = (id: string, productId: number | null) => {
-    setSelectedProducts((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, productId } : item))
+  // ====== 修正点：検索対象のフィルタリング ======
+  const filteredProducts = useMemo(() => {
+    if (!searchQuery.trim()) return products;
+    return products.filter((product) =>
+      product.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
+  }, [products, searchQuery]);
+  // ====== /修正点 ======
+
+  // ====== 修正点：モーダルの開閉・編集開始・確定・削除 ======
+  const openProductModal = (editId?: string) => {
+    if (editId) {
+      const existing = selectedProducts.find((p) => p.id === editId);
+      if (existing) {
+        setSelectedProductInModal(existing.product);
+        setQuantityInModal(existing.quantity);
+        setEditingProductId(editId);
+      }
+    } else {
+      setSelectedProductInModal(null);
+      setQuantityInModal(1);
+      setEditingProductId(null);
+    }
+    setSearchQuery("");
+    setShowProductModal(true);
   };
+
+  const closeProductModal = () => {
+    setShowProductModal(false);
+    setSelectedProductInModal(null);
+    setQuantityInModal(1);
+    setEditingProductId(null);
+    setSearchQuery("");
+  };
+
+  const handleProductSelect = (product: Product) => {
+    setSelectedProductInModal(product);
+  };
+
+  const handleModalOk = () => {
+    if (!selectedProductInModal) return;
+
+    const newRow: SelectedProduct = {
+      id: editingProductId || Date.now().toString(),
+      product: selectedProductInModal,
+      quantity: quantityInModal,
+    };
+
+    if (editingProductId) {
+      setSelectedProducts((prev) =>
+        prev.map((p) => (p.id === editingProductId ? newRow : p))
+      );
+    } else {
+      setSelectedProducts((prev) => [...prev, newRow]);
+    }
+    closeProductModal();
+  };
+
+  const removeProduct = (id: string) => {
+    setSelectedProducts((prev) => prev.filter((p) => p.id !== id));
+  };
+  // ====== /修正点 ======
 
   const getTotalPrice = () => {
     return selectedProducts.reduce((total, item) => {
-      if (item.productId) {
-        const product = products.find((p) => p.id === item.productId);
-        return total + (product ? product.price : 0);
-      }
-      return total;
+      return total + item.product.price * (item.quantity || 1);
     }, 0);
   };
 
+  // ✅ 購入確認モーダル用：選択済み一覧（従来の ConfirmModal は維持）
   const getSelectedProductsList = () => {
-    const productCounts: Record<number, number> = {};
-    selectedProducts.forEach((item) => {
-      if (item.productId) {
-        productCounts[item.productId] =
-          (productCounts[item.productId] || 0) + 1;
-      }
-    });
-    return Object.entries(productCounts)
-      .map(([productId, quantity]) => {
-        const product = products.find((p) => p.id === Number(productId));
-        return { ...product, quantity };
-      })
-      .filter((item: any) => item && item.quantity > 0);
+    // ここでは集約せず、選択行をそのまま表示
+    return selectedProducts.map((row) => ({
+      id: row.product.id,
+      name: row.product.name,
+      price: row.product.price,
+      quantity: row.quantity,
+    }));
   };
 
-  // 追加: レシートを閉じたら選択を初期化
+  // レシートを閉じたら選択を初期化
   const handleReceiptClose = () => {
     setShowReceipt(false);
     setPurchaseData(null);
-    setSelectedProducts([{ id: "1", productId: null }]); // 初期状態に戻す
+    setSelectedProducts([]); // モーダル方式のため空配列へ初期化
   };
 
   const handlePurchase = async () => {
@@ -375,64 +433,63 @@ export default function PurchasePage() {
                   </p>
                 )}
 
-                <div className="space-y-3">
-                  {selectedProducts.map((item) => (
-                    <div key={item.id} className="flex items-center gap-3">
-                      <div className="flex-1">
-                        <Select
-                          value={item.productId?.toString() || ""}
-                          onValueChange={(value) =>
-                            updateSelectedProduct(
-                              item.id,
-                              value ? Number(value) : null
-                            )
-                          }
-                          disabled={loadingProducts}
-                        >
-                          <SelectTrigger>
-                            <SelectValue
-                              placeholder={
-                                loadingProducts
-                                  ? "読み込み中…"
-                                  : "商品を選択してください"
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {products.map((product) => (
-                              <SelectItem
-                                key={product.id}
-                                value={product.id.toString()}
-                              >
-                                {product.name} - ¥{product.price}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                {/* ✅ 修正点：選択済み一覧（表形式・改行対応・編集/削除） */}
+                {selectedProducts.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-sm text-muted-foreground">
+                      選択済み商品
+                    </h3>
+                    {selectedProducts.map((item) => (
+                      <div key={item.id} className="bg-muted p-3 rounded-lg">
+                        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium break-words leading-tight">
+                              {item.product.name}
+                            </p>
+                          </div>
+                          <div className="text-sm text-center min-w-[3rem]">
+                            {item.quantity}個
+                          </div>
+                          <div className="text-sm font-semibold text-right min-w-[4rem]">
+                            ¥
+                            {(
+                              item.product.price * item.quantity
+                            ).toLocaleString()}
+                          </div>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openProductModal(item.id)}
+                              className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                            >
+                              <Edit className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeProduct(item.id)}
+                              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-                      {selectedProducts.length > 1 && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removeProductDropdown(item.id)}
-                          className="h-10 w-10 p-0 text-destructive hover:text-destructive"
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                )}
 
-                  <Button
-                    variant="outline"
-                    onClick={addProductDropdown}
-                    className="w-full h-10 border-dashed border-primary text-primary hover:bg-primary/10 bg-transparent"
-                    disabled={loadingProducts}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    商品を追加
-                  </Button>
-                </div>
+                {/* ✅ 修正点：「商品を追加」→ モーダル起動 */}
+                <Button
+                  variant="outline"
+                  onClick={() => openProductModal()}
+                  className="w-full h-12 border-dashed border-primary text-primary hover:bg-primary/10 bg-transparent"
+                  disabled={loadingProducts}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  商品を追加
+                </Button>
 
                 {getTotalPrice() > 0 && (
                   <div className="bg-primary/10 p-3 rounded-lg">
@@ -445,17 +502,270 @@ export default function PurchasePage() {
                   </div>
                 )}
 
+                {/* 購入ボタン（購入確認モーダルは現状維持） */}
                 <Button
-                  onClick={handlePurchase}
+                  onClick={() => setConfirmOpen(true)}
                   disabled={getTotalPrice() === 0 || loadingProducts}
                   className="w-full h-12 text-lg font-semibold"
                 >
                   購入する
                 </Button>
+
+                {/* 購入前確認モーダル（従来どおり） */}
+                <ConfirmModal
+                  open={confirmOpen}
+                  onOpenChange={setConfirmOpen}
+                  title="購入内容の確認"
+                  description="以下の内容で購入します。よろしければ「購入確定」を押してください。"
+                  confirmLabel="購入確定"
+                  cancelLabel="戻る"
+                  onConfirm={async () => {
+                    setConfirmOpen(false);
+                    await handlePurchase();
+                  }}
+                >
+                  <div className="rounded-md border p-3">
+                    <div className="text-sm font-medium mb-2">購入商品</div>
+
+                    <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                      {getSelectedProductsList().map((it: any) => (
+                        <div
+                          key={it.id}
+                          className="flex items-center justify-between text-sm"
+                        >
+                          <div className="mr-2 min-w-0">
+                            <div className="font-medium break-words whitespace-normal">
+                              {it.name}
+                            </div>
+                            <div className="opacity-70">
+                              単価: ¥{Number(it.price).toLocaleString()} / 個数:{" "}
+                              {it.quantity}
+                            </div>
+                          </div>
+                          <div className="font-semibold shrink-0">
+                            ¥
+                            {(
+                              Number(it.price) * Number(it.quantity)
+                            ).toLocaleString()}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <hr className="my-3" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">合計</span>
+                      <span className="text-lg font-bold">
+                        ¥{getTotalPrice().toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      残高: ¥{balance.toLocaleString()}
+                    </div>
+                  </div>
+                </ConfirmModal>
               </CardContent>
             </Card>
           </div>
         </main>
+
+        {/* ✅ 修正点：商品選択モーダル本体 */}
+        <Dialog open={showProductModal} onOpenChange={closeProductModal}>
+          <DialogContent
+            className="max-w-md w-[calc(100%-24px)] max-h-[80vh] overflow-hidden flex flex-col
+              !left-1/2 !top-1/2 !-translate-x-1/2 !-translate-y-1/2"
+          >
+            <DialogHeader>
+              <DialogTitle>
+                {editingProductId ? "商品を編集" : "商品を選択"}
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+              {/* 追加 or 編集で分岐 */}
+              {editingProductId ? (
+                /* ====== 編集モード：検索UIは出さず、商品名を表示して数量のみ変更 ====== */
+                <div className="space-y-3">
+                  <div className="rounded-lg border p-3 bg-muted/50">
+                    <div className="text-xs text-muted-foreground mb-1">
+                      商品
+                    </div>
+                    <div className="font-medium break-words leading-tight">
+                      {selectedProductInModal?.name ?? "（商品名）"}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      ¥
+                      {Number(
+                        selectedProductInModal?.price ?? 0
+                      ).toLocaleString()}
+                    </div>
+                  </div>
+
+                  {/* 数量のみ変更可 */}
+                  <div className="space-y-3 border-t pt-4">
+                    <div>
+                      <label className="text-sm font-medium">数量</label>
+                      <div className="flex items-center gap-3 mt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setQuantityInModal(Math.max(1, quantityInModal - 1))
+                          }
+                          className="h-8 w-8 p-0"
+                        >
+                          -
+                        </Button>
+                        <span className="font-semibold min-w-[2rem] text-center">
+                          {quantityInModal}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setQuantityInModal(quantityInModal + 1)
+                          }
+                          className="h-8 w-8 p-0"
+                        >
+                          +
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="bg-muted p-3 rounded-lg">
+                      <div className="flex justify-between">
+                        <span className="text-sm">小計</span>
+                        <span className="font-semibold">
+                          ¥
+                          {Number(
+                            (selectedProductInModal?.price ?? 0) *
+                              quantityInModal
+                          ).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* ====== 追加モード：検索→リスト→選択→数量 ====== */
+                <>
+                  {/* 検索バー */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="商品を検索..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+
+                  {/* 商品リスト：検索入力があるときだけ表示 */}
+                  <div className="flex-1 overflow-y-auto space-y-2 max-h-[200px]">
+                    {searchQuery.trim() === "" ? (
+                      <p className="text-center text-muted-foreground py-4">
+                        検索して商品を表示します
+                      </p>
+                    ) : filteredProducts.length > 0 ? (
+                      filteredProducts.map((product) => (
+                        <button
+                          key={product.id}
+                          onClick={() => handleProductSelect(product)}
+                          className={`w-full p-3 text-left rounded-lg border transition-colors ${
+                            selectedProductInModal?.id === product.id
+                              ? "border-primary bg-primary/10"
+                              : "border-border hover:border-primary/50 hover:bg-muted"
+                          }`}
+                        >
+                          <div className="space-y-1">
+                            <p className="font-medium break-words leading-tight">
+                              {product.name}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              ¥{product.price.toLocaleString()}
+                            </p>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="text-center text-muted-foreground py-4">
+                        該当する商品が見つかりません
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 数量選択（商品が選ばれている時だけ表示） */}
+                  {selectedProductInModal && (
+                    <div className="space-y-3 border-t pt-4">
+                      <div>
+                        <label className="text-sm font-medium">数量</label>
+                        <div className="flex items-center gap-3 mt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setQuantityInModal(
+                                Math.max(1, quantityInModal - 1)
+                              )
+                            }
+                            className="h-8 w-8 p-0"
+                          >
+                            -
+                          </Button>
+                          <span className="font-semibold min-w-[2rem] text-center">
+                            {quantityInModal}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setQuantityInModal(quantityInModal + 1)
+                            }
+                            className="h-8 w-8 p-0"
+                          >
+                            +
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="bg-muted p-3 rounded-lg">
+                        <div className="flex justify-between">
+                          <span className="text-sm">小計</span>
+                          <span className="font-semibold">
+                            ¥
+                            {Number(
+                              (selectedProductInModal?.price ?? 0) *
+                                quantityInModal
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* ボタン */}
+              <div className="flex gap-3 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={closeProductModal}
+                  className="flex-1 bg-transparent"
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  onClick={handleModalOk}
+                  disabled={!selectedProductInModal}
+                  className="flex-1"
+                >
+                  OK
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+        {/* ✅ /修正点 */}
       </div>
     </>
   );
