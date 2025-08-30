@@ -59,7 +59,10 @@ export async function DELETE(
   if (!Number.isInteger(id))
     return json({ success: false, error: "invalid id" }, 400);
 
-  const { error } = await supabase.from("Products").delete().eq("id", id);
+  const { error } = await supabase
+    .from("Products")
+    .delete()
+    .eq("id", id);
   if (error) return json({ success: false, error: error.message }, 500);
 
   return json({ success: true });

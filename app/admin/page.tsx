@@ -2,7 +2,7 @@
 
 import useSWR, { useSWRConfig } from "swr";
 import useSWRImmutable from "swr/immutable";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { fetcher } from "@/lib/fetcher";
 import { apiFetch } from "@/lib/api";
 import {
@@ -85,23 +85,61 @@ export default function AdminPage() {
     mutate: refetchProducts,
   } = useSWRImmutable("/api/products", fetcher);
 
-  // チャージリクエストは通常SWR
-  const {
-    data: chargeRaw,
-    isLoading: loadingCR,
-    mutate: refetchCharge,
-  } = useSWR(
-    activeTab === "charge" ? "/api/charge-requests?status=all" : null,
-    fetcher,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      revalidateIfStale: false,
-      dedupingInterval: 10_000,
-      refreshInterval: 0,
-      shouldRetryOnError: false,
-    }
+  // チャージリクエストはページング（「もっと見る」方式）
+  const PAGE_SIZE = 50;
+  const [crItems, setCrItems] = useState<AdminChargeRequest[]>([]);
+  const [crOffset, setCrOffset] = useState(0);
+  const [crHasMore, setCrHasMore] = useState(true);
+  const [loadingCR, setLoadingCR] = useState(false);
+
+  const normalizeRequests = (list: any[]): AdminChargeRequest[] =>
+    list.map((r: any) => ({
+      id: String(r.id ?? r.request_id ?? r.uuid),
+      phone: r.phone ?? r.phone_number ?? r.Users?.phone_number,
+      amount: Number(r.amount ?? 0),
+      approved:
+        typeof r.approved === "boolean"
+          ? r.approved
+          : String(r.approved).toLowerCase() === "true",
+      requested_at: r.requested_at ?? r.createdAt ?? r.created_at ?? "",
+      approved_at: r.approved_at ?? r.approvedAt ?? "",
+      currentBalance: Number(
+        r.currentBalance ?? r.balance ?? r.Users?.balance ?? 0
+      ),
+    }));
+
+  const loadChargeRequests = useCallback(
+    async (opts?: { reset?: boolean }) => {
+      if (loadingCR) return;
+      setLoadingCR(true);
+      const nextOffset = opts?.reset ? 0 : crOffset;
+      try {
+        const res = await apiFetch(
+          `/api/charge-requests?status=all&limit=${PAGE_SIZE}&offset=${nextOffset}`,
+          { lockUI: false }
+        );
+        const json = await res.json().catch(() => ({}));
+        const raw = Array.isArray(json) ? json : json?.items ?? [];
+        const normalized = normalizeRequests(raw);
+        setCrItems((prev) =>
+          opts?.reset ? normalized : [...prev, ...normalized]
+        );
+        setCrOffset(nextOffset + normalized.length);
+        setCrHasMore(normalized.length >= PAGE_SIZE);
+      } catch (e) {
+        console.error("Failed to load charge-requests:", e);
+      } finally {
+        setLoadingCR(false);
+      }
+    },
+    [loadingCR, crOffset, PAGE_SIZE]
   );
+
+  // タブが charge の時に初回ロード
+  useEffect(() => {
+    if (activeTab !== "charge") return;
+    if (crItems.length === 0 && !loadingCR) loadChargeRequests({ reset: true });
+  }, [activeTab, crItems.length, loadingCR, loadChargeRequests]);
 
   // BroadcastChannel で変更検知
   useEffect(() => {
@@ -109,7 +147,7 @@ export default function AdminPage() {
     const onMsg = (e: MessageEvent<any>) => {
       const msg = e.data || {};
       if (msg.type === "CR_CHANGED") {
-        if (activeTab === "charge") refetchCharge();
+        if (activeTab === "charge") loadChargeRequests({ reset: true });
       }
       if (msg.type === "BALANCE_CHANGED" && msg.phone) {
         const key = `/api/balance?phone=${encodeURIComponent(
@@ -126,7 +164,7 @@ export default function AdminPage() {
     };
     bc.addEventListener("message", onMsg);
     return () => bc.removeEventListener("message", onMsg);
-  }, [mutate, refetchCharge, activeTab]);
+  }, [mutate, loadChargeRequests, activeTab]);
 
   // products 整形
   const products: any[] = (
@@ -137,23 +175,8 @@ export default function AdminPage() {
     price: Number(p.price ?? 0),
   }));
 
-  // charge-requests 整形
-  const requests: AdminChargeRequest[] = (
-    Array.isArray(chargeRaw) ? chargeRaw : chargeRaw?.items ?? []
-  ).map((r: any) => ({
-    id: String(r.id ?? r.request_id ?? r.uuid),
-    phone: r.phone ?? r.phone_number ?? r.Users?.phone_number,
-    amount: Number(r.amount ?? 0),
-    approved:
-      typeof r.approved === "boolean"
-        ? r.approved
-        : String(r.approved).toLowerCase() === "true",
-    requested_at: r.requested_at ?? r.createdAt ?? r.created_at ?? "",
-    approved_at: r.approved_at ?? r.approvedAt ?? "",
-    currentBalance: Number(
-      r.currentBalance ?? r.balance ?? r.Users?.balance ?? 0
-    ),
-  }));
+  // charge-requests 整形済み（ページングで保持）
+  const requests: AdminChargeRequest[] = crItems;
 
   // 承認
   const handleApprove = async (req: AdminChargeRequest) => {
@@ -166,7 +189,7 @@ export default function AdminPage() {
       });
       const result = await response.json();
       if (result.success) {
-        await refetchCharge();
+        await loadChargeRequests({ reset: true });
         const key = `/api/balance?phone=${encodeURIComponent(
           normalizePhone(req.phone)
         )}`;
@@ -422,9 +445,13 @@ export default function AdminPage() {
                                     </Badge>
                                   </div>
                                   <div className="text-sm text-muted-foreground">
-                                    チャージ額: {request.amount.toLocaleString()}ks |
+                                    チャージ額:{" "}
+                                    {request.amount.toLocaleString()}ks |
                                     現在残高:{" "}
-                                    <BalanceCell phone={request.phone} initial={request.currentBalance} />
+                                    <BalanceCell
+                                      phone={request.phone}
+                                      initial={request.currentBalance}
+                                    />
                                   </div>
                                   <div className="text-xs text-muted-foreground">
                                     {formatYGNMinute(request.requested_at)}
@@ -444,6 +471,17 @@ export default function AdminPage() {
                           </Card>
                         ))}
                       </div>
+                    </div>
+                  )}
+                  {/* もっと見る（承認待ちタブ内） */}
+                  {crHasMore && (
+                    <div className="mt-4 flex justify-center">
+                      <Button
+                        onClick={() => loadChargeRequests()}
+                        disabled={loadingCR}
+                      >
+                        もっと見る
+                      </Button>
                     </div>
                   )}
                 </TabsContent>
@@ -489,13 +527,21 @@ export default function AdminPage() {
                                     )}
                                   </div>
                                   <div className="text-sm text-muted-foreground">
-                                    チャージ額: {request.amount.toLocaleString()}ks |
+                                    チャージ額:{" "}
+                                    {request.amount.toLocaleString()}ks |
                                     現在残高:{" "}
-                                    <BalanceCell phone={request.phone} initial={request.currentBalance} />
+                                    <BalanceCell
+                                      phone={request.phone}
+                                      initial={request.currentBalance}
+                                    />
                                   </div>
                                   <div className="text-xs text-muted-foreground">
-                                    リクエスト: {formatYGNMinute(request.requested_at)} {" "}|{" "}
-                                    承認: {request.approved ? formatYGNMinute(request.approved_at) : "-"}
+                                    リクエスト:{" "}
+                                    {formatYGNMinute(request.requested_at)} |{" "}
+                                    承認:{" "}
+                                    {request.approved
+                                      ? formatYGNMinute(request.approved_at)
+                                      : "-"}
                                   </div>
                                 </div>
                               </div>
@@ -503,6 +549,17 @@ export default function AdminPage() {
                           </Card>
                         ))}
                       </div>
+                    </div>
+                  )}
+                  {/* もっと見る（処理済みタブ内） */}
+                  {crHasMore && (
+                    <div className="mt-4 flex justify-center">
+                      <Button
+                        onClick={() => loadChargeRequests()}
+                        disabled={loadingCR}
+                      >
+                        もっと見る
+                      </Button>
                     </div>
                   )}
                 </TabsContent>
@@ -731,6 +788,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
-
-

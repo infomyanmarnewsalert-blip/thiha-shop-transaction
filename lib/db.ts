@@ -17,7 +17,7 @@ const BAL_TTL = Number(process.env.BALANCE_CACHE_TTL_MS ?? 2000);
 export async function findUserByPhone(phone: string) {
   const { data, error } = await supabase
     .from('Users')
-    .select('*')
+    .select('id,phone_number,balance,last_charge_date')
     .eq('phone_number', phone)
     .maybeSingle();
   if (error) throw new Error(error.message);

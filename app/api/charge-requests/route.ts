@@ -14,11 +14,22 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const status =
       (searchParams.get("status") as "pending" | "approved" | "all") || "all";
+    // Pagination (default: 50, max: 200)
+    const limit = Math.min(
+      Math.max(Number(searchParams.get("limit") ?? 50), 1),
+      200
+    );
+    const offset = Math.max(Number(searchParams.get("offset") ?? 0), 0);
+
     let query = supabase
       .from("ChargeRequests")
-      .select("*, Users(phone_number,balance,last_charge_date)")
+      .select(
+        "id,user_id,amount,approved,requested_at,approved_at, Users(phone_number,balance,last_charge_date)"
+      )
       // 新しい順で上に来るように並べる
-      .order("requested_at", { ascending: false, nullsFirst: false });
+      .order("requested_at", { ascending: false, nullsFirst: false })
+      // Apply pagination to reduce memory and payload
+      .range(offset, offset + limit - 1);
     if (status === "pending") query = query.eq("approved", false);
     if (status === "approved") query = query.eq("approved", true);
     const { data, error } = await query;
@@ -45,19 +56,18 @@ export async function POST(req: Request) {
   if (!parsed.success) return json({ error: parsed.error.format() }, 400);
   const { phone, amount } = parsed.data;
 
-  let user = await findUserByPhone(phone);
-  if (!user) {
+  const found = await findUserByPhone(phone);
+  let userId: string | number | undefined = (found?.id as any) ?? undefined;
+  if (!userId) {
     const { data: newUser, error: userErr } = await supabase
       .from("Users")
       .insert({ phone_number: phone, balance: 0, last_charge_date: "" })
       .select("id")
       .single();
     if (userErr) return json({ error: userErr.message }, 500);
-    user = newUser;
+    userId = newUser.id as string | number;
   }
-
-  const userId = user.id;
-  const now = nowISO();
+  if (userId == null) return json({ error: "failed to resolve user id" }, 500);
   // ✅ id は指定しない。DB が採番した id を返す
   const { data: inserted, error } = await supabase
     .from("ChargeRequests")
@@ -93,7 +103,7 @@ export async function PUT(req: Request) {
 
     const { data: reqData, error: reqErr } = await supabase
       .from("ChargeRequests")
-      .select("*")
+      .select("user_id,amount,approved")
       .eq("id", idNum)
       .maybeSingle();
     if (reqErr || !reqData)

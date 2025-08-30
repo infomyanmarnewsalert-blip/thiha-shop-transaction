@@ -71,9 +71,11 @@ export async function POST(req: Request) {
     }
 
     // 新規作成（ここで "name" など存在しないカラムは一切送らない）
-    const { error: insertErr } = await supabase.from("Users").insert({
-      phone_number: phone,
-    });
+    const { error: insertErr } = await supabase
+      .from("Users")
+      .insert({
+        phone_number: phone,
+      });
 
     if (insertErr) {
       return NextResponse.json(
