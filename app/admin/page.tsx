@@ -76,6 +76,7 @@ export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+  const [chargePhoneQuery, setChargePhoneQuery] = useState("");
 
   // 商品は immutable
   const {
@@ -292,8 +293,18 @@ export default function AdminPage() {
     product.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
   const pendingRequests = requests.filter((req) => !req.approved);
-  // 処理済みタブでは API(status=all) の全件を表示する
-  const processedRequests = requests;
+  const processedRequests = requests.filter((req) => req.approved);
+
+  // 電話番号フィルタ（数字のみで部分一致）
+  const phoneQuery = normalizePhone(chargePhoneQuery);
+  const matchPhone = (p: string) =>
+    !phoneQuery || normalizePhone(p).includes(phoneQuery);
+  const visiblePendingRequests = pendingRequests.filter((r) =>
+    matchPhone(r.phone)
+  );
+  const visibleProcessedRequests = processedRequests.filter((r) =>
+    matchPhone(r.phone)
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -362,13 +373,26 @@ export default function AdminPage() {
                   </TabsTrigger>
                   <TabsTrigger value="processed">処理済み</TabsTrigger>
                 </TabsList>
+                {/* 電話番号検索（両タブ共通） */}
+                <div className="mt-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                    <Input
+                      placeholder="電話番号で検索...（数字のみ可）"
+                      inputMode="numeric"
+                      value={chargePhoneQuery}
+                      onChange={(e) => setChargePhoneQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
 
                 {/* 承認待ち：タブの中で “だけ” スクロール */}
                 <TabsContent
                   value="pending"
                   className="flex-1 flex flex-col overflow-hidden mt-6 min-h-0"
                 >
-                  {pendingRequests.length === 0 ? (
+                  {visiblePendingRequests.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       承認待ちのリクエストはありません
                     </div>
@@ -378,7 +402,7 @@ export default function AdminPage() {
                       style={{ scrollbarGutter: "stable both-edges" }}
                     >
                       <div className="grid grid-cols-1 gap-4">
-                        {pendingRequests.map((request) => (
+                        {visiblePendingRequests.map((request) => (
                           <Card
                             key={request.id}
                             className="border-2 border-primary/20"
@@ -430,7 +454,7 @@ export default function AdminPage() {
                   value="processed"
                   className="flex-1 flex flex-col overflow-hidden mt-6 min-h-0"
                 >
-                  {processedRequests.length === 0 ? (
+                  {visibleProcessedRequests.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       処理済みのリクエストはありません
                     </div>
@@ -440,7 +464,7 @@ export default function AdminPage() {
                       style={{ scrollbarGutter: "stable both-edges" }}
                     >
                       <div className="grid grid-cols-1 gap-4">
-                        {processedRequests.map((request) => (
+                        {visibleProcessedRequests.map((request) => (
                           <Card key={request.id}>
                             <CardContent className="p-3">
                               <div className="flex items-center justify-between">
