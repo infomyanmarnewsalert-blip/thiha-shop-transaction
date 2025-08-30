@@ -47,6 +47,9 @@ export default function ChargePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, amount }),
+        waitMessage: "Processing, please wait...",
+        retryOn429: true,
+        max429Retries: 6,
       });
       const json = await res.json().catch(() => ({}));
 

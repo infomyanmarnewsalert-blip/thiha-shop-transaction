@@ -1,6 +1,7 @@
 // app/api/auth/register/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getQueue } from "@/lib/queues";
 
 // Node ランタイム（service_role を使う場合の保険）
 export const runtime = "nodejs";
@@ -71,20 +72,38 @@ export async function POST(req: Request) {
     }
 
     // 新規作成（ここで "name" など存在しないカラムは一切送らない）
-    const { error: insertErr } = await supabase
-      .from("Users")
-      .insert({
-        phone_number: phone,
+    // Enqueue per phone to avoid race on same phone; allow parallel for different phones
+    const queue = getQueue(`register:${phone}`, 1, 200);
+    try {
+      const resp = await queue.add(async () => {
+        const { error: upsertErr } = await supabase
+          .from("Users")
+          .upsert(
+            { phone_number: phone },
+            { onConflict: "phone_number", ignoreDuplicates: true }
+          );
+        if (upsertErr) throw new Error(upsertErr.message);
+        return NextResponse.json(
+          { ok: true, phone, balance: 0 },
+          { status: 200 }
+        );
       });
-
-    if (insertErr) {
+      return resp;
+    } catch (qe: any) {
+      if (qe?.code === "QUEUE_LIMIT") {
+        return NextResponse.json(
+          { ok: false, error: "Processing" },
+          {
+            status: 429,
+            headers: { "x-wait-reason": "Processing, please wait..." },
+          }
+        );
+      }
       return NextResponse.json(
-        { ok: false, error: insertErr.message },
+        { ok: false, error: qe?.message ?? "failed during queue" },
         { status: 500 }
       );
     }
-
-    return NextResponse.json({ ok: true, phone, balance: 0 }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message ?? "unknown error" },

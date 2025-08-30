@@ -157,6 +157,9 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ phone: normalized }),
+        waitMessage: "Processing, please wait...",
+        retryOn429: true,
+        max429Retries: 6,
       });
       const j: any = await r.json().catch(() => ({}));
 
@@ -240,7 +243,12 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
                   onChange={(e) => setPhone(e.target.value)}
                   disabled={loading}
                 />
-                <p id="phoneHelp" className="text-xs text-muted-foreground mt-1">Start with 09. Use 8–11 digits. Example: 09000000000</p>
+                <p
+                  id="phoneHelp"
+                  className="text-xs text-muted-foreground mt-1"
+                >
+                  Start with 09. Use 8–11 digits. Example: 09000000000
+                </p>
               </div>
 
               {error && <p className="text-sm text-red-600">{error}</p>}
@@ -275,7 +283,3 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
     </div>
   );
 }
-
-
-
-

@@ -186,6 +186,9 @@ export default function AdminPage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: req.id }),
+        waitMessage: "Processing, please wait...",
+        retryOn429: true,
+        max429Retries: 6,
       });
       const result = await response.json();
       if (result.success) {

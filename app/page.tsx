@@ -303,6 +303,9 @@ export default function PurchasePage() {
             total: Number(it.price) * Number(it.quantity),
           })),
         }),
+        waitMessage: "Processing, please wait...",
+        retryOn429: true,
+        max429Retries: 6,
       });
       const result = await response.json();
       if (response.ok) {

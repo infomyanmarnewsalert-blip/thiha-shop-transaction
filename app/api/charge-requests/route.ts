@@ -2,6 +2,7 @@
 export const runtime = "nodejs";
 
 import { supabase, invalidateBalanceCache, findUserByPhone } from "@/lib/db";
+import { getQueue } from "@/lib/queues";
 import { ChargeRequestSchema } from "@/lib/validators";
 import { json, nowISO } from "@/lib/utils";
 import { notifyAdmins, isPushReady } from "@/lib/push";
@@ -61,11 +62,28 @@ export async function POST(req: Request) {
   if (!userId) {
     const { data: newUser, error: userErr } = await supabase
       .from("Users")
-      .insert({ phone_number: phone, balance: 0, last_charge_date: "" })
+      .upsert(
+        { phone_number: phone, balance: 0, last_charge_date: "" },
+        { onConflict: "phone_number", ignoreDuplicates: false }
+      )
       .select("id")
-      .single();
+      .maybeSingle();
     if (userErr) return json({ error: userErr.message }, 500);
-    userId = newUser.id as string | number;
+    userId = (newUser?.id as string | number) ?? undefined;
+    if (!userId) {
+      // Fallback: fetch id after upsert
+      const { data: refetched, error: refErr } = await supabase
+        .from("Users")
+        .select("id")
+        .eq("phone_number", phone)
+        .maybeSingle();
+      if (refErr || !refetched)
+        return json(
+          { error: refErr?.message ?? "failed to resolve user" },
+          500
+        );
+      userId = refetched.id as string | number;
+    }
   }
   if (userId == null) return json({ error: "failed to resolve user id" }, 500);
   // ✅ id は指定しない。DB が採番した id を返す
@@ -113,27 +131,50 @@ export async function PUT(req: Request) {
     const userId = reqData.user_id as string | number;
     const amount = Number(reqData.amount ?? 0);
     const now = nowISO();
+    const queue = getQueue(`user:${userId}`, 1, 1000);
+    try {
+      const resp = await queue.add(async () => {
+        await supabase
+          .from("ChargeRequests")
+          .update({ approved: true })
+          .eq("id", idNum);
 
-    await supabase
-      .from("ChargeRequests")
-      .update({ approved: true })
-      .eq("id", idNum);
+        const { data: user } = await supabase
+          .from("Users")
+          .select("phone_number,balance")
+          .eq("id", userId)
+          .maybeSingle();
+        if (!user)
+          return json({ success: false, error: "user not found" }, 404);
+        const phone = user.phone_number as string;
+        const newBalance = Number(user.balance ?? 0) + amount;
+        await supabase
+          .from("Users")
+          .update({ balance: newBalance, last_charge_date: now })
+          .eq("id", userId);
 
-    const { data: user } = await supabase
-      .from("Users")
-      .select("phone_number,balance")
-      .eq("id", userId)
-      .maybeSingle();
-    if (!user) return json({ success: false, error: "user not found" }, 404);
-    const phone = user.phone_number as string;
-    const newBalance = Number(user.balance ?? 0) + amount;
-    await supabase
-      .from("Users")
-      .update({ balance: newBalance, last_charge_date: now })
-      .eq("id", userId);
-
-    invalidateBalanceCache(phone);
-    return json({ success: true, balance: newBalance }, 200);
+        invalidateBalanceCache(phone);
+        return json({ success: true, balance: newBalance }, 200);
+      });
+      return resp;
+    } catch (e: any) {
+      if (e?.code === "QUEUE_LIMIT")
+        return new Response(
+          JSON.stringify({ success: false, error: "Processing" }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json",
+              "cache-control": "no-store",
+              "x-wait-reason": "Processing, please wait...",
+            },
+          }
+        );
+      return json(
+        { success: false, error: e?.message ?? "approve failed" },
+        500
+      );
+    }
   } catch (e: any) {
     return json({ success: false, error: e?.message ?? "approve failed" }, 500);
   }
