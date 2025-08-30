@@ -44,7 +44,10 @@ type AdminChargeRequest = {
 const normalizePhone = (p?: string) => (p ?? "").replace(/\D/g, "");
 
 // 1行の現在残高セル
-function BalanceCell({ phone }: { phone: string }) {
+function BalanceCell({ phone, initial }: { phone: string; initial?: number }) {
+  if (typeof initial === "number" && Number.isFinite(initial)) {
+    return <>ﾂ･{initial.toLocaleString()}</>;
+  }
   const normalized = normalizePhone(phone);
   const key = normalized
     ? `/api/balance?phone=${encodeURIComponent(normalized)}`
@@ -85,21 +88,27 @@ export default function AdminPage() {
     data: chargeRaw,
     isLoading: loadingCR,
     mutate: refetchCharge,
-  } = useSWR("/api/charge-requests?status=all", fetcher, {
-    revalidateOnFocus: true,
-    revalidateOnReconnect: false,
-    revalidateIfStale: false,
-    dedupingInterval: 10_000,
-    refreshInterval: activeTab === "charge" ? 5000 : 0,
-    shouldRetryOnError: false,
-  });
+  } = useSWR(
+    activeTab === "charge" ? "/api/charge-requests?status=all" : null,
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      revalidateIfStale: false,
+      dedupingInterval: 10_000,
+      refreshInterval: 0,
+      shouldRetryOnError: false,
+    }
+  );
 
   // BroadcastChannel で変更検知
   useEffect(() => {
     const bc = new BroadcastChannel("thiha-shop");
     const onMsg = (e: MessageEvent<any>) => {
       const msg = e.data || {};
-      if (msg.type === "CR_CHANGED") refetchCharge();
+      if (msg.type === "CR_CHANGED") {
+        if (activeTab === "charge") refetchCharge();
+      }
       if (msg.type === "BALANCE_CHANGED" && msg.phone) {
         const key = `/api/balance?phone=${encodeURIComponent(
           normalizePhone(msg.phone)
@@ -115,7 +124,7 @@ export default function AdminPage() {
     };
     bc.addEventListener("message", onMsg);
     return () => bc.removeEventListener("message", onMsg);
-  }, [mutate, refetchCharge]);
+  }, [mutate, refetchCharge, activeTab]);
 
   // products 整形
   const products: any[] = (
@@ -139,7 +148,9 @@ export default function AdminPage() {
         : String(r.approved).toLowerCase() === "true",
     requested_at: r.requested_at ?? r.createdAt ?? r.created_at ?? "",
     approved_at: r.approved_at ?? r.approvedAt ?? "",
-    currentBalance: undefined,
+    currentBalance: Number(
+      r.currentBalance ?? r.balance ?? r.Users?.balance ?? 0
+    ),
   }));
 
   // 承認
@@ -385,7 +396,7 @@ export default function AdminPage() {
                                     チャージ額: ¥
                                     {request.amount.toLocaleString()} |
                                     現在残高:{" "}
-                                    <BalanceCell phone={request.phone} />
+                                    <BalanceCell phone={request.phone} initial={request.currentBalance} />
                                   </div>
                                   <div className="text-xs text-muted-foreground">
                                     {request.requested_at}
@@ -441,7 +452,7 @@ export default function AdminPage() {
                                     チャージ額: ¥
                                     {request.amount.toLocaleString()} |
                                     現在残高:{" "}
-                                    <BalanceCell phone={request.phone} />
+                                    <BalanceCell phone={request.phone} initial={request.currentBalance} />
                                   </div>
                                   <div className="text-xs text-muted-foreground">
                                     リクエスト: {request.requested_at} | 承認:{" "}

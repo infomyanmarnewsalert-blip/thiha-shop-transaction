@@ -16,7 +16,7 @@ export async function GET(req: Request) {
       (searchParams.get("status") as "pending" | "approved" | "all") || "all";
     let query = supabase
       .from("ChargeRequests")
-      .select("*, Users(phone_number)")
+      .select("*, Users(phone_number,balance,last_charge_date)")
       .order("requested_at", { ascending: true });
     if (status === "pending") query = query.eq("approved", false);
     if (status === "approved") query = query.eq("approved", true);
@@ -24,7 +24,12 @@ export async function GET(req: Request) {
     if (error) return json({ error: error.message }, 500);
     const items = (data ?? []).map((r: any) => {
       const { Users, ...rest } = r;
-      return { ...rest, phone: Users?.phone_number };
+      return {
+        ...rest,
+        phone: Users?.phone_number,
+        currentBalance: Users?.balance,
+        last_charge_date: Users?.last_charge_date,
+      };
     });
     return json({ items });
   } catch (e: any) {
