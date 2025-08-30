@@ -1,4 +1,4 @@
-/* app/charge/page.tsx */
+﻿/* app/charge/page.tsx */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -88,56 +88,48 @@ export default function ChargePage() {
               <div className="mx-auto w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mb-4">
                 <CheckCircle className="w-8 h-8 text-primary" />
               </div>
-              <CardTitle className="text-xl font-black">
-                チャージリクエスト証明
-              </CardTitle>
+              <CardTitle className="text-xl font-black">Request Sent</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="bg-muted p-4 rounded-lg space-y-3">
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">
-                    電話番号（下4桁）
+                    Phone (last 4)
                   </span>
                   <span className="font-semibold">
                     ****{requestData.phoneLastFour}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    チャージリクエスト金額
-                  </span>
+                  <span className="text-sm text-muted-foreground">Amount</span>
                   <span className="font-semibold">
-                    ¥{requestData.amount.toLocaleString()}
+                    {requestData.amount.toLocaleString()}ks
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    ステータス
-                  </span>
+                  <span className="text-sm text-muted-foreground">Status</span>
                   <Badge
                     variant="secondary"
                     className="bg-yellow-100 text-yellow-800"
                   >
-                    承認待ち（pending）
+                    Pending
                   </Badge>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    リクエスト日時
-                  </span>
+                  <span className="text-sm text-muted-foreground">Time</span>
                   <span className="text-sm">{requestData.timestamp}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">
-                    リクエストID
+                    Request ID
                   </span>
                   <span className="font-semibold">{requestData.requestId}</span>
                 </div>
               </div>
 
               <Alert className="border-primary bg-primary/5">
-                <AlertDescription className="text-primary text-sm">
-                  チャージリクエストした金額の現金を管理者に渡してChargeをお願いしてください
+                <AlertDescription className="flex justify-center text-center text-lg text-red-500 font-bold">
+                  Show this screen to admin staff.
                 </AlertDescription>
               </Alert>
 
@@ -151,7 +143,7 @@ export default function ChargePage() {
     );
   }
 
-  // ===== チャージ金額選択画面（プリセット上/入力不可） =====
+  // ===== Choose Amount選択画面（プリセット上/入力不可） =====
   return (
     <div className="min-h-screen bg-background">
       <header className="bg-card border-b border-border sticky top-0 z-10">
@@ -162,7 +154,7 @@ export default function ChargePage() {
                 <ArrowLeft className="w-4 h-4" />
               </Button>
             </Link>
-            <h1 className="text-lg font-black">残高チャージ</h1>
+            <h1 className="text-lg font-black">Request Charge Money</h1>
           </div>
         </div>
       </header>
@@ -172,13 +164,13 @@ export default function ChargePage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base font-semibold">
-                チャージ金額
+                Choose Amount
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* よく使う金額（上） */}
+              {/* Quick Pick（上） */}
               <div>
-                <div className="mb-2 font-semibold">よく使う金額</div>
+                <div className="mb-2 font-semibold"></div>
                 <div className="grid grid-cols-2 gap-3">
                   {PRESETS.map((v) => {
                     const selected = amount === v;
@@ -191,23 +183,23 @@ export default function ChargePage() {
                         onClick={() => setAmount(v)}
                         disabled={submitting}
                       >
-                        ¥{v.toLocaleString()}
+                        {v.toLocaleString()}ks
                       </Button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* 金額（円）：表示のみ */}
+              {/* Selected：表示のみ */}
               <div>
-                <div className="mb-2 font-semibold">金額（円）</div>
+                <div className="mb-2 font-semibold">Selected</div>
                 <div className="h-12 flex items-center rounded-md border px-3 bg-muted/30">
                   <span className="text-lg font-semibold">
-                    {amount ? `¥${amount.toLocaleString()}` : "未選択"}
+                    {amount ? `${amount.toLocaleString()}ks` : "ks"}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
-                  ※金額は上の「よく使う金額」から選択してください
+                  Pick an amount and press Request Charge Money.
                 </p>
               </div>
 
@@ -225,23 +217,23 @@ export default function ChargePage() {
                 className="w-full h-12 text-lg font-semibold"
               >
                 {submitting ? (
-                  "送信中..."
+                  "Sending..."
                 ) : (
                   <>
                     <CreditCard className="w-5 h-5 mr-2" />
-                    チャージリクエスト送信
+                    Request Charge Money
                   </>
                 )}
               </Button>
 
-              {/* ✅ 追加：チャージ前確認モーダル（電話番号はマスクしない） */}
+              {/* ✅ 追加：Charge MoneyRequest前確認モーダル（Phoneはマスクしない） */}
               <ConfirmModal
                 open={confirmOpen}
                 onOpenChange={setConfirmOpen}
-                title="チャージリクエストの確認"
-                description="以下の内容でチャージリクエストを送信します。よろしければ「チャージ確定」を押してください。"
-                confirmLabel="チャージ確定"
-                cancelLabel="戻る"
+                title="Confirm Amount"
+                description="Please check amount. OK?"
+                confirmLabel="Request"
+                cancelLabel="Cancel"
                 onConfirm={async () => {
                   setConfirmOpen(false);
                   await handleSubmit();
@@ -249,13 +241,13 @@ export default function ChargePage() {
               >
                 <div className="rounded-md border p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm">電話番号</span>
-                    <span className="font-semibold">{phone ?? "未設定"}</span>
+                    <span className="text-sm">Phone</span>
+                    <span className="font-semibold">{phone ?? "Not set"}</span>
                   </div>
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-sm">チャージ金額</span>
+                    <span className="text-sm">Amount</span>
                     <span className="text-lg font-bold">
-                      {amount ? `¥${amount.toLocaleString()}` : "未選択"}
+                      {amount ? `${amount.toLocaleString()}ks` : "ks"}
                     </span>
                   </div>
                 </div>
@@ -263,7 +255,7 @@ export default function ChargePage() {
 
               <Link href="/" className="block">
                 <Button variant="outline" className="w-full bg-transparent">
-                  商品購入画面に戻る
+                  Back to Home
                 </Button>
               </Link>
             </CardContent>

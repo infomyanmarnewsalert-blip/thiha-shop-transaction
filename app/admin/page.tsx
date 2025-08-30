@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import useSWR, { useSWRConfig } from "swr";
 import useSWRImmutable from "swr/immutable";
@@ -47,7 +47,7 @@ const normalizePhone = (p?: string) => (p ?? "").replace(/\D/g, "");
 // 1行の現在残高セル
 function BalanceCell({ phone, initial }: { phone: string; initial?: number }) {
   if (typeof initial === "number" && Number.isFinite(initial)) {
-    return <>ﾂ･{initial.toLocaleString()}</>;
+    return <>{initial.toLocaleString()}ks</>;
   }
   const normalized = normalizePhone(phone);
   const key = normalized
@@ -62,7 +62,7 @@ function BalanceCell({ phone, initial }: { phone: string; initial?: number }) {
     }
   );
   const bal = data?.exists ? Number(data.balance) : 0;
-  return <>¥{(Number.isFinite(bal) ? bal : 0).toLocaleString()}</>;
+  return <>{(Number.isFinite(bal) ? bal : 0).toLocaleString()}ks</>;
 }
 
 export default function AdminPage() {
@@ -405,7 +405,7 @@ export default function AdminPage() {
                         {visiblePendingRequests.map((request) => (
                           <Card
                             key={request.id}
-                            className="border-2 border-primary/20"
+                            className="border-2 border-primary/20 py-2 gap-2"
                           >
                             <CardContent className="p-3">
                               <div className="flex items-center justify-between">
@@ -422,8 +422,7 @@ export default function AdminPage() {
                                     </Badge>
                                   </div>
                                   <div className="text-sm text-muted-foreground">
-                                    チャージ額: ¥
-                                    {request.amount.toLocaleString()} |
+                                    チャージ額: {request.amount.toLocaleString()}ks |
                                     現在残高:{" "}
                                     <BalanceCell phone={request.phone} initial={request.currentBalance} />
                                   </div>
@@ -465,7 +464,7 @@ export default function AdminPage() {
                     >
                       <div className="grid grid-cols-1 gap-4">
                         {visibleProcessedRequests.map((request) => (
-                          <Card key={request.id}>
+                          <Card key={request.id} className="py-2 gap-2">
                             <CardContent className="p-3">
                               <div className="flex items-center justify-between">
                                 <div className="space-y-1">
@@ -490,8 +489,7 @@ export default function AdminPage() {
                                     )}
                                   </div>
                                   <div className="text-sm text-muted-foreground">
-                                    チャージ額: ¥
-                                    {request.amount.toLocaleString()} |
+                                    チャージ額: {request.amount.toLocaleString()}ks |
                                     現在残高:{" "}
                                     <BalanceCell phone={request.phone} initial={request.currentBalance} />
                                   </div>
@@ -614,7 +612,7 @@ export default function AdminPage() {
                         >
                           <td className="py-3 px-4">{product.name}</td>
                           <td className="py-3 px-4">
-                            ¥{product.price.toLocaleString()}
+                            {product.price.toLocaleString()}ks
                           </td>
                           <td className="py-3 px-4 text-right">
                             <div className="flex gap-2 justify-end">
@@ -733,3 +731,6 @@ export default function AdminPage() {
     </div>
   );
 }
+
+
+

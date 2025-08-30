@@ -1,4 +1,4 @@
-// components/ui/login-register-gate.tsx
+﻿// components/ui/login-register-gate.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -53,7 +53,7 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
       setOpen(false);
       onAuthedRef.current(saved, 0);
 
-      // ★ 他タブ/他コンポーネントへもログイン状態を通知
+      // ★ 他タブ/他コンポーネントへもLog In状態を通知
       new BroadcastChannel("thiha-shop").postMessage({
         type: "LOGIN_SUCCESS",
         phone: saved,
@@ -105,9 +105,7 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
 
     const normalized = normalizeToDomestic(phone);
     if (!normalized) {
-      setError(
-        "「09」で始まる数字のみ、合計8〜11桁で入力してください（例: 09000000000）"
-      );
+      setError("Enter a valid phone. Start with 09. 8–11 digits.");
       return;
     }
 
@@ -134,7 +132,7 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
         });
       } else {
         setError(
-          "入力された電話番号は登録されていません。新規登録してください。"
+          "入力された電話番号は登録されていません。Registerしてください。"
         );
       }
     } catch {
@@ -149,9 +147,7 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
 
     const normalized = normalizeToDomestic(phone);
     if (!normalized) {
-      setError(
-        "「09」で始まる数字のみ、合計8〜11桁で入力してください（例: 09000000000）"
-      );
+      setError("Enter a valid phone. Start with 09. 8–11 digits.");
       return;
     }
 
@@ -196,10 +192,10 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
         <CardHeader>
           <CardTitle className="text-lg">
             {mode === "home"
-              ? "はじめに"
+              ? "Welcome"
               : mode === "login"
-              ? "ログイン"
-              : "新規登録"}
+              ? "Log In"
+              : "Register"}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -212,14 +208,14 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
           {mode === "home" && (
             <div className="grid grid-cols-2 gap-3">
               <Button className="h-11" onClick={() => setMode("login")}>
-                ログイン
+                Log In
               </Button>
               <Button
                 variant="outline"
                 className="h-11"
                 onClick={() => setMode("register")}
               >
-                新規登録
+                Register
               </Button>
             </div>
           )}
@@ -228,7 +224,7 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
             <>
               <div className="space-y-1">
                 <label htmlFor="phone" className="text-sm font-medium">
-                  電話番号（必須）
+                  Phone Number
                 </label>
                 <input
                   id="phone"
@@ -236,22 +232,15 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
                   inputMode="numeric"
                   // ブラウザの軽いチェックも併用（JS 側の isValidPhone が主）
                   pattern="^09\d{6,9}$"
-                  title="「09」で始まる数字のみ、合計8〜11桁で入力してください（例: 09000000000）"
-                  placeholder="例: 09000000000"
+                  title="Start with 09. Use 8–11 digits (e.g., 09000000000)"
+                  placeholder="e.g. 09000000000"
                   className="w-full rounded-md border px-3 py-2 outline-none focus:border-gray-400"
                   aria-describedby="phoneHelp"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   disabled={loading}
                 />
-                <p
-                  id="phoneHelp"
-                  className="text-xs text-muted-foreground mt-1"
-                >
-                  「09」で始まる<strong>数字のみ</strong>、
-                  <strong>合計8〜11桁</strong>で入力してください（例:
-                  09000000000）。
-                </p>
+                <p id="phoneHelp" className="text-xs text-muted-foreground mt-1">Start with 09. Use 8–11 digits. Example: 09000000000</p>
               </div>
 
               {error && <p className="text-sm text-red-600">{error}</p>}
@@ -263,10 +252,10 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
                   onClick={mode === "login" ? doLogin : doRegister}
                 >
                   {loading
-                    ? "処理中..."
+                    ? "Loading..."
                     : mode === "login"
-                    ? "ログイン"
-                    : "登録する"}
+                    ? "Log In"
+                    : "Register"}
                 </Button>
                 <Button
                   className="h-11 flex-1"
@@ -276,7 +265,7 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
                     setError(null); // flashは残してもOK。消したいなら setFlash(null)
                   }}
                 >
-                  戻る
+                  Cancel
                 </Button>
               </div>
             </>
@@ -286,3 +275,7 @@ export default function LoginRegisterGate({ onAuthed }: Props) {
     </div>
   );
 }
+
+
+
+

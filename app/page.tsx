@@ -1,4 +1,4 @@
-/* app/page.tsx */
+﻿/* app/page.tsx */
 "use client";
 
 import {
@@ -33,13 +33,14 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 
 // ブラウザ用 Supabase クライアント
 import { createClient } from "@supabase/supabase-js";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 const supabaseBrowser = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL as string,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
 );
 
 type Product = { id: number; name: string; price: number };
-// ✅ 修正点：選択済みは product オブジェクト＋数量で保持（編集/削除しやすく）
+// ✅ 修正点：選択済みは product オブジェクト＋Qtyで保持（編集/削除しやすく）
 type SelectedProduct = { id: string; product: Product; quantity: number };
 
 export default function PurchasePage() {
@@ -111,7 +112,7 @@ export default function PurchasePage() {
     shouldRetryOnError: false,
   });
 
-  // APIの残高を balance ステートへ反映
+  // APIのBalanceを balance ステートへ反映
   useEffect(() => {
     if (!balanceSnap?.exists) return;
     const apiBal = Number(balanceSnap.balance);
@@ -169,7 +170,7 @@ export default function PurchasePage() {
     }));
   }, [productsRaw]);
 
-  // 残高変更のリアルタイム反映（管理側承認など）
+  // Balance変更のリアルタイム反映（管理側承認など）
   useEffect(() => {
     const bc = new BroadcastChannel("thiha-shop");
     const onMsg = (e: MessageEvent<any>) => {
@@ -282,11 +283,11 @@ export default function PurchasePage() {
     const totalPrice = getTotalPrice();
 
     if (selectedList.length === 0) {
-      alert("商品を選択してください");
+      alert("Please select items");
       return;
     }
     if (balance < totalPrice) {
-      alert("残高が不足しています");
+      alert("Shortage of Balance");
       return;
     }
     try {
@@ -352,7 +353,9 @@ export default function PurchasePage() {
               <div className="mx-auto w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mb-4">
                 <ShoppingCart className="w-8 h-8 text-primary" />
               </div>
-              <CardTitle className="text-xl font-black">購入完了</CardTitle>
+              <CardTitle className="text-xl font-black">
+                Purchase Complete
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="bg-muted p-4 rounded-lg space-y-3">
@@ -362,40 +365,38 @@ export default function PurchasePage() {
                       {item.name} × {item.quantity}
                     </span>
                     <span className="font-semibold">
-                      ¥{(item.price * item.quantity).toLocaleString()}
+                      {(item.price * item.quantity).toLocaleString()}ks
                     </span>
                   </div>
                 ))}
                 <div className="border-t pt-2">
                   <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      合計金額
-                    </span>
+                    <span className="text-sm text-muted-foreground">Total</span>
                     <span className="font-bold text-lg">
-                      ¥{purchaseData.totalPrice.toLocaleString()}
+                      {purchaseData.totalPrice.toLocaleString()}ks
                     </span>
                   </div>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    購入日時
-                  </span>
+                  <span className="text-sm text-muted-foreground">Time</span>
                   <span className="text-sm">{purchaseData.timestamp}</span>
                 </div>
                 <div className="flex justify-between border-t pt-2">
-                  <span className="text-sm text-muted-foreground">残高</span>
+                  <span className="text-sm text-muted-foreground">Balance</span>
                   <span className="font-semibold text-primary">
-                    ¥{purchaseData.remainingBalance.toLocaleString()}
+                    {purchaseData.remainingBalance.toLocaleString()}ks
                   </span>
                 </div>
               </div>
 
-              <div className="text-center text-sm text-muted-foreground px-2">
-                管理者に証明画面を見せてください、その後OKボタンを押してください
-              </div>
+              <Alert className="border-primary bg-primary/5">
+                <AlertDescription className="flex justify-center text-center text-lg text-red-500 font-bold">
+                  Show this screen to admin staff.
+                </AlertDescription>
+              </Alert>
 
               <Button onClick={handleReceiptClose} className="w-full h-12">
-                OK
+                Back Home
               </Button>
             </CardContent>
           </Card>
@@ -410,7 +411,7 @@ export default function PurchasePage() {
       <div className="min-h-screen bg-background">
         <header className="bg-card border-b border-border">
           <div className="max-w-md mx-auto px-4 py-4">
-            <h1 className="text-xl font-black text-center">商品購入</h1>
+            <h1 className="text-xl font-black text-center">Thiha Shop App</h1>
           </div>
         </header>
 
@@ -421,13 +422,13 @@ export default function PurchasePage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
                     <Wallet className="w-5 h-5 text-primary mr-2" />
-                    <span className="font-semibold">現在の残高</span>
+                    <span className="font-semibold">Your Balance</span>
                   </div>
                   <Badge
                     variant="secondary"
                     className="text-lg font-bold px-3 py-1 bg-primary/10 text-primary"
                   >
-                    ¥{balance.toLocaleString()}
+                    {balance.toLocaleString()}ks
                   </Badge>
                 </div>
               </CardContent>
@@ -440,19 +441,19 @@ export default function PurchasePage() {
                   className="w-full h-12 bg透明 border-primary text-primary hover:bg-primary/10"
                 >
                   <CreditCard className="w-5 h-5 mr-2" />
-                  残高をチャージする
+                  Request Charge Money
                 </Button>
               </Link>
             </div>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">商品を選択</CardTitle>
+                <CardTitle className="text-lg">Select Items</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {productsError && (
                   <p className="text-sm text-destructive">
-                    商品の取得に失敗しました
+                    Failed to load items.
                   </p>
                 )}
 
@@ -460,7 +461,7 @@ export default function PurchasePage() {
                 {selectedProducts.length > 0 && (
                   <div className="space-y-3">
                     <h3 className="font-semibold text-sm text-muted-foreground">
-                      選択済み商品
+                      Selected Items
                     </h3>
                     {selectedProducts.map((item) => (
                       <div key={item.id} className="bg-muted p-3 rounded-lg">
@@ -471,13 +472,13 @@ export default function PurchasePage() {
                             </p>
                           </div>
                           <div className="text-sm text-center min-w-[3rem]">
-                            {item.quantity}個
+                            {item.quantity}x
                           </div>
                           <div className="text-sm font-semibold text-right min-w-[4rem]">
-                            ¥
                             {(
                               item.product.price * item.quantity
                             ).toLocaleString()}
+                            ks
                           </div>
                           <div className="flex gap-1">
                             <Button
@@ -503,7 +504,7 @@ export default function PurchasePage() {
                   </div>
                 )}
 
-                {/* ✅ 修正点：「商品を追加」→ モーダル起動 */}
+                {/* ✅ 修正点：「Add Item」→ モーダル起動 */}
                 <Button
                   variant="outline"
                   onClick={() => openProductModal()}
@@ -511,15 +512,15 @@ export default function PurchasePage() {
                   disabled={loadingProducts}
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  商品を追加
+                  Add Item
                 </Button>
 
                 {getTotalPrice() > 0 && (
                   <div className="bg-primary/10 p-3 rounded-lg">
                     <div className="flex justify-between items-center">
-                      <span className="font-semibold">合計金額</span>
+                      <span className="font-semibold">Total</span>
                       <span className="text-lg font-bold text-primary">
-                        ¥{getTotalPrice().toLocaleString()}
+                        {getTotalPrice().toLocaleString()}ks
                       </span>
                     </div>
                   </div>
@@ -531,24 +532,26 @@ export default function PurchasePage() {
                   disabled={getTotalPrice() === 0 || loadingProducts}
                   className="w-full h-12 text-lg font-semibold"
                 >
-                  購入する
+                  Purchase
                 </Button>
 
                 {/* 購入前確認モーダル（従来どおり） */}
                 <ConfirmModal
                   open={confirmOpen}
                   onOpenChange={setConfirmOpen}
-                  title="購入内容の確認"
-                  description="以下の内容で購入します。よろしければ「購入確定」を押してください。"
-                  confirmLabel="購入確定"
-                  cancelLabel="戻る"
+                  title="Confirm Purchase"
+                  description="Please check selected items. OK?"
+                  confirmLabel="Purchase"
+                  cancelLabel="Cancel"
                   onConfirm={async () => {
                     setConfirmOpen(false);
                     await handlePurchase();
                   }}
                 >
                   <div className="rounded-md border p-3">
-                    <div className="text-sm font-medium mb-2">購入商品</div>
+                    <div className="text-sm font-small mb-2">
+                      Selected Items
+                    </div>
 
                     <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                       {getSelectedProductsList().map((it: any) => (
@@ -561,15 +564,15 @@ export default function PurchasePage() {
                               {it.name}
                             </div>
                             <div className="opacity-70">
-                              単価: ¥{Number(it.price).toLocaleString()} / 個数:{" "}
-                              {it.quantity}
+                              Price: {Number(it.price).toLocaleString()}ks /
+                              Qty: {it.quantity}
                             </div>
                           </div>
                           <div className="font-semibold shrink-0">
-                            ¥
                             {(
                               Number(it.price) * Number(it.quantity)
                             ).toLocaleString()}
+                            ks
                           </div>
                         </div>
                       ))}
@@ -577,13 +580,13 @@ export default function PurchasePage() {
 
                     <hr className="my-3" />
                     <div className="flex items-center justify-between">
-                      <span className="text-sm">合計</span>
+                      <span className="text-sm">Total</span>
                       <span className="text-lg font-bold">
-                        ¥{getTotalPrice().toLocaleString()}
+                        {getTotalPrice().toLocaleString()}ks
                       </span>
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
-                      残高: ¥{balance.toLocaleString()}
+                      Balance: {balance.toLocaleString()}ks
                     </div>
                   </div>
                 </ConfirmModal>
@@ -600,34 +603,34 @@ export default function PurchasePage() {
           >
             <DialogHeader>
               <DialogTitle>
-                {editingProductId ? "商品を編集" : "商品を選択"}
+                {editingProductId ? "Edit Item" : "Select Items"}
               </DialogTitle>
             </DialogHeader>
 
             <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
               {/* 追加 or 編集で分岐 */}
               {editingProductId ? (
-                /* ====== 編集モード：検索UIは出さず、商品名を表示して数量のみ変更 ====== */
+                /* ====== 編集モード：検索UIは出さず、商品名を表示してQtyのみ変更 ====== */
                 <div className="space-y-3">
                   <div className="rounded-lg border p-3 bg-muted/50">
                     <div className="text-xs text-muted-foreground mb-1">
-                      商品
+                      Selected Item
                     </div>
                     <div className="font-medium break-words leading-tight">
-                      {selectedProductInModal?.name ?? "（商品名）"}
+                      {selectedProductInModal?.name ?? "(Item Name)"}
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      ¥
                       {Number(
                         selectedProductInModal?.price ?? 0
                       ).toLocaleString()}
+                      ks
                     </div>
                   </div>
 
-                  {/* 数量のみ変更可 */}
+                  {/* Qtyのみ変更可 */}
                   <div className="space-y-3 border-t pt-4">
                     <div>
-                      <label className="text-sm font-medium">数量</label>
+                      <label className="text-sm font-medium">Qty</label>
                       <div className="flex items-center gap-3 mt-2">
                         <Button
                           variant="outline"
@@ -657,26 +660,26 @@ export default function PurchasePage() {
 
                     <div className="bg-muted p-3 rounded-lg">
                       <div className="flex justify-between">
-                        <span className="text-sm">小計</span>
+                        <span className="text-sm">Subtotal</span>
                         <span className="font-semibold">
-                          ¥
                           {Number(
                             (selectedProductInModal?.price ?? 0) *
                               quantityInModal
                           ).toLocaleString()}
+                          ks
                         </span>
                       </div>
                     </div>
                   </div>
                 </div>
               ) : (
-                /* ====== 追加モード：検索→リスト→選択→数量 ====== */
+                /* ====== 追加モード：検索→リスト→選択→Qty ====== */
                 <>
                   {/* 検索バー */}
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
-                      placeholder="商品を検索..."
+                      placeholder="Search items..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10"
@@ -687,7 +690,7 @@ export default function PurchasePage() {
                   <div className="flex-1 overflow-y-auto space-y-2 max-h-[200px]">
                     {searchQuery.trim() === "" ? (
                       <p className="text-center text-muted-foreground py-4">
-                        検索して商品を表示します
+                        Type to search.
                       </p>
                     ) : filteredProducts.length > 0 ? (
                       filteredProducts.map((product) => (
@@ -705,23 +708,23 @@ export default function PurchasePage() {
                               {product.name}
                             </p>
                             <p className="text-sm text-muted-foreground">
-                              ¥{product.price.toLocaleString()}
+                              {product.price.toLocaleString()}ks
                             </p>
                           </div>
                         </button>
                       ))
                     ) : (
                       <p className="text-center text-muted-foreground py-4">
-                        該当する商品が見つかりません
+                        No items found.
                       </p>
                     )}
                   </div>
 
-                  {/* 数量選択（商品が選ばれている時だけ表示） */}
+                  {/* Qty選択（商品が選ばれている時だけ表示） */}
                   {selectedProductInModal && (
                     <div className="space-y-3 border-t pt-4">
                       <div>
-                        <label className="text-sm font-medium">数量</label>
+                        <label className="text-sm font-medium">Qty</label>
                         <div className="flex items-center gap-3 mt-2">
                           <Button
                             variant="outline"
@@ -753,13 +756,13 @@ export default function PurchasePage() {
 
                       <div className="bg-muted p-3 rounded-lg">
                         <div className="flex justify-between">
-                          <span className="text-sm">小計</span>
+                          <span className="text-sm">Subtotal</span>
                           <span className="font-semibold">
-                            ¥
                             {Number(
                               (selectedProductInModal?.price ?? 0) *
                                 quantityInModal
                             ).toLocaleString()}
+                            ks
                           </span>
                         </div>
                       </div>
@@ -775,7 +778,7 @@ export default function PurchasePage() {
                   onClick={closeProductModal}
                   className="flex-1 bg-transparent"
                 >
-                  キャンセル
+                  Cancel
                 </Button>
                 <Button
                   onClick={handleModalOk}
