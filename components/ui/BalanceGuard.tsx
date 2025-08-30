@@ -36,7 +36,6 @@ export default function BalanceGuard({ children }: BalanceGuardProps) {
 
   // Gate 完了時に phone を保存
   const handleAuthed = React.useCallback((p: string, _b: number) => {
-    localStorage.setItem("phone", p);
     setPhone(p);
   }, []);
 
